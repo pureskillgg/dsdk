@@ -7,8 +7,10 @@ import boto3
 import pandas as pd
 import hdbscan
 
+
 def create_ds_models(**kwargs):
     return DsModels(**kwargs)
+
 
 def create_ds_model(*, model, log):
     model_type = model["type"]
