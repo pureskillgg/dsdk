@@ -15,7 +15,7 @@ url = "https://pureskillgg.jfrog.io/artifactory/api/pypi/private/simple"
 
 [tool.poetry.dependencies]
 python = "~3.8.6"
-boto3 = "^1.17.3"
+boto3 = "^1.12.32"
 pandas = "^1.2.1"
 hdbscan = "^0.8.27"
 
