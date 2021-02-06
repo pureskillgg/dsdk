@@ -30,6 +30,7 @@ pytest-runner = "^5.2"
 pytest-watch = "^4.2"
 twine = "^3.0"
 wheel = "^0.34.0"
+structlog = "^20.2.0"
 
 [build-system]
 requires = ["poetry>=1.0"]
