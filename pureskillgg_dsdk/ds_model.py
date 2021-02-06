@@ -109,7 +109,7 @@ class SagemakerEndpoint:
             raise Exception(f"Unknown res type {self._res_type}")
 
 
-class S3Setup:
+class S3Model:
     def __init__(self, model, log):
         self.model_name = model["model_name"]
         self.model_parameters = model.get("parameters", {})
@@ -122,7 +122,7 @@ class S3Setup:
         return "/".join([self._prefix, ".".join([key, self._extension])])
 
 
-class S3Hashmap(S3Setup):
+class S3Hashmap(S3Model):
     def __init__(self, *, model, log):
         super().__init__(model, log)
         self._key = model["key"]
@@ -152,7 +152,7 @@ class S3Hashmap(S3Setup):
         return self._model_data.get(key, None)
 
 
-class S3Dataframe(S3Setup):
+class S3Dataframe(S3Model):
     def __init__(self, *, model, log):
         super().__init__(model, log)
         self._key = model["key"]
@@ -182,7 +182,7 @@ class S3Dataframe(S3Setup):
         return self._model_data
 
 
-class S3DataframeSet(S3Setup):
+class S3DataframeSet(S3Model):
     def __init__(self, *, model, log):
         super().__init__(model, log)
         self._prefix = model["prefix"]
@@ -233,7 +233,7 @@ class S3DataframeSet(S3Setup):
         return self._model_data
 
 
-class S3ScikitSet(S3Setup):
+class S3ScikitSet(S3Model):
     def __init__(self, *, model, log):
         super().__init__(model, log)
         self._prefix = model["prefix"]
