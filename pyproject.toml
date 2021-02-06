@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "pureskillgg-makenew-pypackage"
-version = "1.1.3"
-description = "Package skeleton for a Python module."
+name = "pureskillgg-dsdk"
+version = "0.0.0"
+description = "Python Data Science Development Kit."
 authors = ["PureSkill.gg <secure@pureskill.gg>"]
 license = "SEE LICENSE IN LICENSE.txt"
 readme = "README.rst"
-homepage = "https://github.com/pureskillgg/makenew-pypackage"
-repository = "https://github.com/pureskillgg/makenew-pypackage"
+homepage = "https://github.com/pureskillgg/dsdk"
+repository = "https://github.com/pureskillgg/dsdk"
 include = ['poetry.lock']
 
 [[tool.poetry.source]]
