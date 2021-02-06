@@ -82,10 +82,10 @@ class SagemakerEndpoint:
             model_name=self.model_name,
         )
 
-    def invoke(self, df):
+    def invoke(self, dataframe):
         self._log.info("Invoke: Start")
         runtime = boto3.client("runtime.sagemaker")
-        final_data = self._format_data(df)
+        final_data = self._format_data(dataframe)
         response = runtime.invoke_endpoint(
             EndpointName=self._endpoint_name,
             ContentType=self._content_type,
@@ -94,9 +94,9 @@ class SagemakerEndpoint:
 
         return self._transform_sagemaker_output(response)
 
-    def _format_data(self, df):
+    def _format_data(self, dataframe):
         if self._content_type == "text/csv":
-            final_data = df[self.columns].to_csv(index=False, header=False)
+            final_data = dataframe[self.columns].to_csv(index=False, header=False)
         else:
             raise Exception(f"Unknown content type {self._content_type}")
         return final_data
@@ -105,8 +105,8 @@ class SagemakerEndpoint:
         if self._res_type == "application/json":
             results = json.loads(response["Body"].read().decode())
             return pd.DataFrame.from_dict(results.get(self._res_key))
-        else:
-            raise Exception(f"Unknown res type {self._res_type}")
+
+        raise Exception(f"Unknown res type {self._res_type}")
 
 
 class S3Model:
@@ -117,6 +117,9 @@ class S3Model:
         self._res_type = model["res_type"]
         self._model_data = None
         self._s3_client = boto3.client("s3")
+        self._prefix = ""
+        self._extension = ""
+        self._log = log
 
     def _get_key(self, key):
         return "/".join([self._prefix, ".".join([key, self._extension])])
@@ -205,18 +208,18 @@ class S3DataframeSet(S3Model):
         if self._res_type == "application/x-parquet":
             self._model_data = self._read_parquet()
         else:
-            raise Exception(f"Unknown res_type {self._res_type}")
+            raise Exception("Unknown res_type {self._res_type}")
 
     def _read_parquet(self):
         s3_key = self._get_key(self._selected_key)
         obj = self._s3_client.get_object(Bucket=self._bucket, Key=s3_key)
-        df = pd.read_parquet(BytesIO(obj["Body"].read()))
-        return df
+        dataframe = pd.read_parquet(BytesIO(obj["Body"].read()))
+        return dataframe
 
     def select(self, filter_dict):
         if self._model_selected:
             raise Exception(
-                f"Cannot select two different models. Call get_ds_model again to use another model."
+                "Cannot select two different models. Call get_ds_model again to use another model."
             )
         self._model_selected = True
         dataframe = find_matching_model(self._dataframes, filter_dict)
@@ -226,7 +229,7 @@ class S3DataframeSet(S3Model):
     def invoke(self):
         self._log.debug("Invoke: Start")
         if not self._model_selected:
-            raise Exception(f"You must call select before invoke")
+            raise Exception("You must call select before invoke")
         if self._selected_key is None:
             return None
         self._load_model()
@@ -269,6 +272,7 @@ class S3ScikitSet(S3Model):
 
     def _use_model(self, model, data):
         if self._model_type == "hdbscan":
+            # pylint: disable=unused-variable
             test_labels, strengths = hdbscan.approximate_predict(model, data)
             self._model_data = test_labels
         else:
@@ -277,19 +281,19 @@ class S3ScikitSet(S3Model):
     def select(self, filter_dict):
         if self._model_selected:
             raise Exception(
-                f"Cannot select two different models. Call get_ds_model again to use another model."
+                "Cannot select two different models. Call get_ds_model again to use another model."
             )
         self._model_selected = True
         scikit = find_matching_model(self._scikits, filter_dict)
         if scikit is not None:
             self._selected_key = scikit["key"]
 
-    def invoke(self, df):
+    def invoke(self, dataframe):
         self._log.debug("Invoke: Start")
         if not self._model_selected:
-            raise Exception(f"You must call select before invoke")
+            raise Exception("You must call select before invoke")
         if self._selected_key is None:
             return None
         model = self._load_model()
-        self._use_model(model, df)
+        self._use_model(model, dataframe)
         return self._model_data

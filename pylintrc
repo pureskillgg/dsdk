@@ -5,6 +5,8 @@ init-hook='import sys; sys.path.insert(0, os.path.abspath("pureskillgg_dsdk"))'
 [MESSAGES CONTROL]
 
 disable=
+    line-too-long,
+    too-many-instance-attributes,
     bad-continuation,
     missing-class-docstring,
     missing-function-docstring,
