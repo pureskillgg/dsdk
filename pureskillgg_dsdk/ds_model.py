@@ -322,13 +322,15 @@ class S3Scikit(S3Model):
 
     def _read_pickle(self):
         my_pickle = pickle.loads(
-            self._s3_client.get_object(Bucket=self._bucket, Key=self._key)["Body"].read()
+            self._s3_client.get_object(Bucket=self._bucket, Key=self._key)[
+                "Body"
+            ].read()
         )
         return my_pickle
 
     def _use_model(self, dataframe):
         if self._model_type == "MiniBatchKMeans":
-            labels=self._loaded_model.predict(dataframe)
+            labels = self._loaded_model.predict(dataframe)
             return labels
         raise Exception(f"Unknown model_type {self._model_type}")
 
