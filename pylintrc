@@ -12,3 +12,9 @@ disable=
     missing-function-docstring,
     missing-module-docstring,
     too-few-public-methods,
+	
+[TYPECHECK]
+ignored-modules = rapidjson
+
+[BASIC]
+good-names=df

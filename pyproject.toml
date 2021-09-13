@@ -18,6 +18,8 @@ python = "~3.8.6"
 boto3 = "^1.12.32"
 pandas = "^1.2.1"
 hdbscan = "^0.8.27"
+python-rapidjson = "^1.4"
+pyarrow = "^5.0.0"
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"
