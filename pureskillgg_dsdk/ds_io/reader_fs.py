@@ -36,14 +36,14 @@ class DsReaderFs:
             with GzipFile(file_location, "r") as fin:
                 data = rapidjson.loads(fin.read().decode("utf-8"))
         else:
-            with open(file_location, "r") as fin:
+            with open(file_location, "r", encoding="utf-8") as fin:
                 data = rapidjson.loads(fin.read())
 
         return data
 
     def read_metadata(self) -> Dict:
         self._log.info("Read Metadata: Start")
-        return dict()
+        return {}
 
     def read_parquet_channel(self, channel: Dict, columns: List[str]) -> pd.DataFrame:
         self._log.info(

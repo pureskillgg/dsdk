@@ -81,7 +81,7 @@ class GameDsLoader:
 
         instructions = self._normalize_channel_instructions(channel_instructions)
 
-        output = dict()
+        output = {}
         for instruction in instructions:
             dataframe = self.get_channel(instruction)
             output[instruction["channel"]] = dataframe

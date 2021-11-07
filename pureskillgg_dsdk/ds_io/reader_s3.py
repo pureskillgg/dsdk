@@ -101,7 +101,7 @@ class DsReaderS3:
 
     def _get_channel_location(self, channel: Dict, /) -> str:
         key = self._get_channel_key(channel)
-        return "s3://{}/{}".format(self._bucket, key)
+        return f"s3://{self._bucket}/{key}"
 
     def _get_channel_key(self, channel: Dict) -> str:
         key = channel["key"]
