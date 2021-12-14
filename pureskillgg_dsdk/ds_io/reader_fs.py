@@ -76,7 +76,7 @@ class DsReaderFs:
         return add_prefix(key, self._prefix)
 
 
-def add_prefix(channel_name, prefix, /) -> str:
+def add_prefix(key, prefix, /) -> str:
     if prefix is None:
-        return channel_name
-    return os.path.join(prefix, channel_name)
+        return key
+    return os.path.join(prefix, key)

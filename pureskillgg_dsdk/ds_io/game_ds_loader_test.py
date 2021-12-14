@@ -9,8 +9,8 @@ from glob import glob
 import os
 import pandas as pd
 import pytest
-from .ds_io.game_ds_loader import GameDsLoader
-from .ds_io.reader_fs import DsReaderFs
+from .game_ds_loader import GameDsLoader
+from .reader_fs import DsReaderFs
 
 
 def create_test_game_ds_loader():

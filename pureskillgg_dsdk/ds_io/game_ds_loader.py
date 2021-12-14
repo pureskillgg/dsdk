@@ -83,8 +83,8 @@ class GameDsLoader:
 
         output = {}
         for instruction in instructions:
-            dataframe = self.get_channel(instruction)
-            output[instruction["channel"]] = dataframe
+            df = self.get_channel(instruction)
+            output[instruction["channel"]] = df
         return output
 
     def get_channel(self, instruction: ChannelInstruction) -> (str, pd.DataFrame):
@@ -106,14 +106,13 @@ class GameDsLoader:
         channel = self._find_channel_by_name(instruction["channel"])
 
         content_type = channel["contentType"]
-        if content_type == "application/x-parquet":
-            dataframe = self._reader.read_parquet_channel(
-                channel, columns=instruction.get("columns")
-            )
-        else:
+        if content_type != "application/x-parquet":
             raise Exception(f"Unsupported content type {content_type}")
 
-        return dataframe
+        df = self._reader.read_parquet_channel(
+            channel, columns=instruction.get("columns")
+        )
+        return df
 
     def _find_channel_by_name(self, channel_name: str, /) -> Dict:
         channel = first_true(
