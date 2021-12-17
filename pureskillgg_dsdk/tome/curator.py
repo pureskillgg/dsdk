@@ -86,7 +86,15 @@ class TomeCuratorFs:
         return loader
 
     def new_tome(
-        self, tome_name, /, *, header_tome_name=None, ds_reader_instructions=None
+        self,
+        tome_name,
+        /,
+        *,
+        header_tome_name=None,
+        ds_reading_instructions=None,
+        max_page_size_mb=None,
+        max_page_row_count=None,
+        limit_check_frequency=100,
     ):
         header_name = (
             header_tome_name
@@ -100,13 +108,25 @@ class TomeCuratorFs:
         writer = TomeWriterFs(
             root_path=self._tome_collection_root_path, tome_name=name, log=self._log
         )
-        manifest = TomeManifest(tome_name=name, path=writer.path, ds_type=self._ds_type)
-        scribe = TomeScribe(manifest=manifest, writer=writer, log=self._log)
+        manifest = TomeManifest(
+            tome_name=name,
+            path=writer.path,
+            ds_type=self._ds_type,
+            header_tome_name=header_name,
+        )
+        scribe = TomeScribe(
+            manifest=manifest,
+            writer=writer,
+            log=self._log,
+            max_page_size_mb=max_page_size_mb,
+            max_page_row_count=max_page_row_count,
+            limit_check_frequency=limit_check_frequency,
+        )
 
         tomer = TomeMaker(
             header_loader=header_loader,
             scribe=scribe,
-            ds_reader_instructions=ds_reader_instructions,
+            ds_reading_instructions=ds_reading_instructions,
             ds_type=self._ds_type,
         )
         return tomer

@@ -3,10 +3,23 @@ import pandas as pd
 
 
 class TomeScribe:
-    def __init__(self, *, manifest, writer, log: object = None):
+    def __init__(
+        self,
+        *,
+        manifest,
+        writer,
+        log: object = None,
+        max_page_size_mb=None,
+        max_page_row_count=None,
+        limit_check_frequency=100
+    ):
         self._log = log if log is not None else structlog.get_logger()
         self._manifest = manifest
         self._writer = writer
+        self._max_page_size_mb = max_page_size_mb
+        self._max_page_row_count = max_page_row_count
+        self._limit_check_frequency = limit_check_frequency
+
         self._data_dict = {}
         self._data_dict_index = 0
         self._keyset = []
@@ -25,27 +38,53 @@ class TomeScribe:
 
     def start(self):
         self._writer.write_manifest(self._manifest.get())
+        self._manifest.start_page()
 
     def finish(self):
+        if self._page_counter == 0 and len(self._keyset) == 0:
+            raise Exception("Empty Tome not supported")
         if len(self._keyset) > 0:
             self._write()
+            self._manifest.finish()
+            self._writer.write_manifest(self._manifest.get())
 
     def concat(self, df, keys):
         self._concat_keys(keys)
         self._concat_df(df)
+        self._on_data()
 
     def _write(self):
-        page = self._manifest.add_page(self._page_counter)
+        page = self._manifest.end_page(self._page_counter)
         self._writer.write_page(page, self.dataframe, self.keyset)
         self._writer.write_manifest(self._manifest.get())
         self._page_counter += 1
-        self._reset_data_keyset()
+        self._new_page()
 
-    def _reset_data_keyset(self) -> None:
+    def _on_data(self):
+        if self._will_write_page():
+            self._write()
+
+    def _will_write_page(self) -> bool:
+        if len(self.keyset) == 0:
+            return False
+        if len(self.keyset) % self._limit_check_frequency != 0:
+            return False
+        if self._max_page_size_mb is not None:
+            current_size = self._page_size_mb()
+            if current_size > self._max_page_size_mb:
+                return True
+        if self._max_page_row_count is not None:
+            current_row_count = self._page_row_count()
+            if current_row_count > self._max_page_row_count:
+                return True
+        return False
+
+    def _new_page(self) -> None:
         self._keyset = []
         self._data_dict = {}
         self._data_dict_index = 0
         self._data_df = None
+        self._manifest.start_page()
 
     def _concat_df(self, df):
         if df is not None:
@@ -60,3 +99,13 @@ class TomeScribe:
             self._keyset += keys
         else:
             self._keyset.append(keys)
+
+    def _page_size_mb(self) -> float:
+        df = self.dataframe
+        size_in_mb = sum(df.memory_usage()) / 1024 / 1024
+        return size_in_mb
+
+    def _page_row_count(self) -> int:
+        df = self.dataframe
+        row_count = df.shape[0]
+        return row_count

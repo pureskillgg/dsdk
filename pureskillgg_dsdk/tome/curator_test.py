@@ -71,7 +71,7 @@ def test_new_tome():
     tomer = curator.new_tome(
         new_tome_name,
         header_tome_name=sub_header_name,
-        ds_reader_instructions=[{"channel": "round_end"}],
+        ds_reading_instructions=[{"channel": "round_end"}],
     )
 
     for data, _ in tomer.iterate():
@@ -79,5 +79,42 @@ def test_new_tome():
 
     df = curator.get_dataframe(new_tome_name)
     keyset = curator.get_keyset(new_tome_name)
+    assert isinstance(df, pd.DataFrame)
+    assert isinstance(keyset, list)
+
+
+def test_new_tome_with_options():
+    new_tome_name_size_limited = "round_end_size_limited"
+    new_tome_name_row_limited = "round_end_row_limited"
+    curator = create_instance()
+    tomer = curator.new_tome(
+        new_tome_name_size_limited,
+        header_tome_name=sub_header_name,
+        ds_reading_instructions=[{"channel": "round_end"}],
+        max_page_size_mb=0.00001,
+        limit_check_frequency=1,
+    )
+
+    for data, _ in tomer.iterate():
+        tomer.concat(data["round_end"])
+
+    df = curator.get_dataframe(new_tome_name_size_limited)
+    keyset = curator.get_keyset(new_tome_name_size_limited)
+    assert isinstance(df, pd.DataFrame)
+    assert isinstance(keyset, list)
+
+    tomer = curator.new_tome(
+        new_tome_name_row_limited,
+        header_tome_name=sub_header_name,
+        ds_reading_instructions=[{"channel": "round_end"}],
+        max_page_row_count=1,
+        limit_check_frequency=1,
+    )
+
+    for data, _ in tomer.iterate():
+        tomer.concat(data["round_end"])
+
+    df = curator.get_dataframe(new_tome_name_row_limited)
+    keyset = curator.get_keyset(new_tome_name_row_limited)
     assert isinstance(df, pd.DataFrame)
     assert isinstance(keyset, list)

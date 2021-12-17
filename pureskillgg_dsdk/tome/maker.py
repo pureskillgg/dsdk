@@ -12,7 +12,7 @@ class TomeMaker:
         *,
         header_loader,
         scribe,
-        ds_reader_instructions,
+        ds_reading_instructions,
         ds_type,
         print_status_frequency=100,
         reader_class=DsReaderFs,
@@ -24,7 +24,7 @@ class TomeMaker:
         self._log = log if log is not None else structlog.get_logger()
         self._scribe = scribe
         self._ds_type = ds_type
-        self._ds_reader_instructions = ds_reader_instructions
+        self._ds_reading_instructions = ds_reading_instructions
         self._header_loader = header_loader
         self._print_status_frequency = print_status_frequency
         self._reader_class = reader_class
@@ -35,6 +35,7 @@ class TomeMaker:
     def iterate(self):
         """Get data for the next key"""
         self._load()
+        self._scribe.start()
         start_time = time.time()
         key_counter = 0
         for key in self.keyset:
@@ -74,7 +75,7 @@ class TomeMaker:
             log=self._log,
         )
         ds_loader = GameDsLoader(reader=ds_reader, log=self._log)
-        data = ds_loader.get_channels(self._ds_reader_instructions)
+        data = ds_loader.get_channels(self._ds_reading_instructions)
         return data
 
     def _load(self):

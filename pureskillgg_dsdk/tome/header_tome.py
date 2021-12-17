@@ -29,7 +29,9 @@ def create_header_tome_from_fs(
     log = log if log is not None else structlog.get_logger()
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    manifest = TomeManifest(tome_name=name, path=writer.path, ds_type=ds_type)
+    manifest = TomeManifest(
+        tome_name=name, path=writer.path, ds_type=ds_type, is_header=True
+    )
     scribe = TomeScribe(manifest=manifest, writer=writer, log=log)
 
     scribe.start()
@@ -69,14 +71,20 @@ def create_subheader_tome_from_fs(
         root_path=tome_collection_root_path, tome_name=src_name, log=log
     )
     src_loader = TomeLoader(reader=src_reader, log=log)
-    ds_type = src_loader.manifest["ds_type"]
+    ds_type = src_loader.manifest["dsType"]
 
     df = src_loader.get_dataframe()
     df = df.loc[selector]
     keys = list(df["key"])
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    manifest = TomeManifest(tome_name=name, path=writer.path, ds_type=ds_type)
+    manifest = TomeManifest(
+        tome_name=name,
+        path=writer.path,
+        ds_type=ds_type,
+        header_tome_name=src_name,
+        is_header=True,
+    )
     scribe = TomeScribe(writer=writer, manifest=manifest, log=log)
     scribe.start()
     scribe.concat(df, keys)
