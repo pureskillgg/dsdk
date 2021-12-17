@@ -36,7 +36,7 @@ def create_header_tome_from_fs(
 
     scribe.start()
 
-    for ds_path in get_ds_paths_from_glob(ds_collection_root_path, path_depth):
+    for ds_path in get_ds_paths_from_glob(ds_collection_root_path, path_depth, ds_type):
         ds_loader = fetch_ds_header_from_fs(ds_path, ds_type, log)
         job_id = ds_loader.manifest["jobId"]
         df = ds_loader.get_channel({"channel": "header"})
@@ -95,8 +95,9 @@ def create_subheader_tome_from_fs(
     return TomeLoader(reader=reader, log=log)
 
 
-def get_ds_paths_from_glob(ds_root_path, path_depth):
-    paths = glob(os.path.join(ds_root_path, *(["*"] * path_depth)))
+def get_ds_paths_from_glob(ds_root_path, path_depth, ds_type):
+    paths = glob(os.path.join(ds_root_path, *(["*"] * path_depth), ds_type))
+    paths = [os.path.join(*path.split(os.path.sep)[:-1]) for path in paths]
     paths = set(paths)
     return paths
 
