@@ -47,7 +47,7 @@ class TomeCuratorFs:
         )
 
     def create_subheader_tome(
-        self, tome_name, selector=lambda df: True, /, *, src_tome_name=None
+        self, tome_name, selector=lambda df: [True] * len(df), /, *, src_tome_name=None
     ):
         src_name = (
             src_tome_name if src_tome_name is not None else self._default_header_name

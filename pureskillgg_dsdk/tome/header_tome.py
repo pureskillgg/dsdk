@@ -55,7 +55,7 @@ def create_subheader_tome_from_fs(
     name,
     /,
     src_tome_name=None,
-    selector=lambda df: True,
+    selector=lambda df: [True] * len(df),
     *,
     tome_collection_root_path="tomes",
     log=None,
