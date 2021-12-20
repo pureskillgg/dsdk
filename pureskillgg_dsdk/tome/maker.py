@@ -67,14 +67,23 @@ class TomeMaker:
 
     def _log_status(self, key_counter: int, start_time: float):
         if key_counter % self._print_status_frequency == 0 and key_counter > 0:
-            time_elapsed = time.time() - start_time
-            timings = {"seconds_elapsed": int(time_elapsed)}
-            if timings["seconds_elapsed"] > 60:
-                timings["minutes_elapsed"] = int(timings["seconds_elapsed"] / 60)
-                if timings["minutes_elapsed"] > 60:
-                    timings["hours_elapsed"] = int(timings["minutes_elapsed"] / 60)
-
-            self._log.debug("Update", keys_done=key_counter, **timings)
+            n_done = key_counter
+            n_total = len(self.keyset)
+            fraction_complete = n_done / n_total
+            seconds_elapsed = time.time() - start_time
+            time_remaining = (seconds_elapsed / fraction_complete) - seconds_elapsed
+            meta = {
+                "page_count": self._scribe.page_counter,
+                "page_row_count": self._scribe.page_row_count,
+                "page_size_mb": self._scribe.page_size_mb,
+                "percent_complete": round(100 * fraction_complete, 3),
+                "keys_complete": n_done,
+                "minutes_elapsed": int(seconds_elapsed / 60),
+                "minutes_remaining": int(time_remaining / 60),
+                "hours_elapsed": int(seconds_elapsed / 60 / 60),
+                "hours_remaining": int(time_remaining / 60),
+            }
+            self._log.info("Tome Maker Update:", **meta)
 
     def _get_ds_channels_from_fs(self, key):
         path_to_ds = self._key_to_path(key)

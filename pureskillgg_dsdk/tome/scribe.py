@@ -44,6 +44,18 @@ class TomeScribe:
     def tome_name(self):
         return self._writer.tome_name
 
+    @property
+    def page_counter(self):
+        return self._page_counter
+
+    @property
+    def page_size_mb(self):
+        return self._get_page_size_mb()
+
+    @property
+    def page_row_count(self):
+        return self._get_page_row_count()
+
     def start(self):
         self._writer.write_manifest(self._manifest.get())
         self._manifest.start_page()
@@ -82,11 +94,11 @@ class TomeScribe:
         if len(self.keyset) % self._limit_check_frequency != 0:
             return False
         if self._max_page_size_mb is not None:
-            current_size = self._page_size_mb()
+            current_size = self._get_page_size_mb()
             if current_size > self._max_page_size_mb:
                 return True
         if self._max_page_row_count is not None:
-            current_row_count = self._page_row_count()
+            current_row_count = self._get_page_row_count()
             if current_row_count > self._max_page_row_count:
                 return True
         return False
@@ -112,12 +124,12 @@ class TomeScribe:
         else:
             self._keyset.append(keys)
 
-    def _page_size_mb(self) -> float:
+    def _get_page_size_mb(self) -> float:
         df = self.dataframe
         size_in_mb = sum(df.memory_usage()) / 1024 / 1024
         return size_in_mb
 
-    def _page_row_count(self) -> int:
+    def _get_page_row_count(self) -> int:
         df = self.dataframe
         row_count = df.shape[0]
         return row_count
