@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.9.1 / 2021-12-20
+
+### Fixed
+
+- Source ID overwriting the normal ID when copying headers.
+- Log not properly passed through in `make_tome`.
+
+### Changed
+
+- Log now last keyword on tome classes.
+- Tome maker status logger now `info` level rather than `debug`.
+
+### Added
+
+- TomeManifest class now has a logger.
+- More info to tome maker status logger.
+
 ## 0.9.0 / 2021-12-20
 
 ### Added
