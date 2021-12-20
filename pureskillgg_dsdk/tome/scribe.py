@@ -8,10 +8,10 @@ class TomeScribe:
         *,
         manifest,
         writer,
-        log: object = None,
         max_page_size_mb=None,
         max_page_row_count=None,
-        limit_check_frequency=100
+        limit_check_frequency=100,
+        log: object = None,
     ):
         self._log = log if log is not None else structlog.get_logger()
         self._manifest = manifest

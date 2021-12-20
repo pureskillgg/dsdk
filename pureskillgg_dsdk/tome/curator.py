@@ -118,14 +118,15 @@ class TomeCuratorFs:
             path=writer.path,
             ds_type=self._ds_type,
             header_tome_name=header_name,
+            log=self._log,
         )
         scribe = TomeScribe(
             manifest=manifest,
             writer=writer,
-            log=self._log,
             max_page_size_mb=max_page_size_mb,
             max_page_row_count=max_page_row_count,
             limit_check_frequency=limit_check_frequency,
+            log=self._log,
         )
 
         tomer = TomeMaker(
@@ -137,6 +138,7 @@ class TomeCuratorFs:
             copy_header=copy_header_func,
             behavior_if_complete=behavior_if_complete,
             behavior_if_partial=behavior_if_partial,
+            log=self._log,
         )
         return tomer
 

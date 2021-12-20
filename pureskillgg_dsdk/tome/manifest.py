@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
+import structlog
 
 # pylint: disable=too-many-arguments
 class TomeManifest:
@@ -12,7 +13,9 @@ class TomeManifest:
         is_header=False,
         header_tome_name=None,
         src_id=None,
+        log=None,
     ):
+        self._log = log if log is not None else structlog.get_logger()
         self._data = create_manifest(
             tome_name, path, ds_type, is_header, header_tome_name, src_id
         )
