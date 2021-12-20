@@ -38,7 +38,7 @@ class TomeWriterFs:
 
     def _ensure_dir(self):
         if not os.path.isdir(self.path):
-            os.mkdir(self.path)
+            os.makedirs(self.path)
 
     def _write_dataframe(self, page, dataframe):
         key = self._get_page_key("dataframe", page)

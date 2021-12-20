@@ -9,7 +9,7 @@ from .constants import (
 
 
 class TomeReaderFs:
-    def __init__(self, *, root_path, prefix=None, tome_name, log=None):
+    def __init__(self, *, root_path, prefix=None, tome_name, log=None, has_header=True):
         self._log = log if log is not None else structlog.get_logger()
         self._log = self._log.bind(
             client="tome_reader_fs",
@@ -19,6 +19,27 @@ class TomeReaderFs:
         )
 
         self._path = get_tome_path_fs(root_path, prefix, tome_name)
+        self.has_header = has_header
+        self.header = None
+        if self.has_header:
+            self.header = TomeReaderFs(
+                root_path=self._path,
+                tome_name="header",
+                has_header=False,
+                log=self._log,
+            )
+
+    @property
+    def exists(self):
+        """If the tome exists"""
+        try:
+            self.read_manifest()
+        except FileNotFoundError:
+            return False
+        except:
+            self._log.error("There was an error while loading the loader")
+            raise
+        return True
 
     def read_manifest(self):
         key = get_tome_manifest_key_fs(self._path)

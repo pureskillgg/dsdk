@@ -1,16 +1,26 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-
+# pylint: disable=too-many-arguments
 class TomeManifest:
     def __init__(
-        self, *, tome_name, path, ds_type, is_header=False, header_tome_name=None
+        self,
+        *,
+        tome_name,
+        path,
+        ds_type,
+        is_header=False,
+        header_tome_name=None,
+        src_id=None,
     ):
         self._data = create_manifest(
-            tome_name, path, ds_type, is_header, header_tome_name
+            tome_name, path, ds_type, is_header, header_tome_name, src_id
         )
         self._current_page_start_time = None
         self._current_page_end_time = None
+
+    def set(self, data):
+        self._data = data
 
     def start_page(self):
         self._current_page_start_time = now()
@@ -66,9 +76,10 @@ def content_name(page_number, subtype):
     return f"{subtype}_{str(page_number).zfill(5)}"
 
 
-def create_manifest(tome_name, path, ds_type, is_header, header_tome_name):
+def create_manifest(tome_name, path, ds_type, is_header, header_tome_name, src_id):
     return {
-        "id": str(uuid4()),
+        "id": str(uuid4()) if src_id is None else src_id,
+        "sourceId": src_id,
         "type": "tome",
         "isHeader": is_header,
         "headerTomeName": header_tome_name,

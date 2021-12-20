@@ -51,6 +51,7 @@ def create_header_tome_from_fs(
     return TomeLoader(reader=reader, log=log)
 
 
+# pylint: disable=too-many-locals
 def create_subheader_tome_from_fs(
     name,
     /,
@@ -58,6 +59,8 @@ def create_subheader_tome_from_fs(
     selector=lambda df: [True] * len(df),
     *,
     tome_collection_root_path="tomes",
+    dest_tome_name=None,
+    preserve_src_id=False,
     log=None,
 ):
     """
@@ -71,26 +74,28 @@ def create_subheader_tome_from_fs(
         root_path=tome_collection_root_path, tome_name=src_name, log=log
     )
     src_loader = TomeLoader(reader=src_reader, log=log)
-    ds_type = src_loader.manifest["dsType"]
 
-    df = src_loader.get_dataframe()
-    df = df.loc[selector]
-    keys = list(df["key"])
+    if dest_tome_name is None:
+        output_path = tome_collection_root_path
+    else:
+        output_path = os.path.join(tome_collection_root_path, dest_tome_name)
 
-    writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
+    writer = TomeWriterFs(root_path=output_path, tome_name=name, log=log)
     manifest = TomeManifest(
         tome_name=name,
         path=writer.path,
-        ds_type=ds_type,
+        ds_type=src_loader.manifest["dsType"],
         header_tome_name=src_name,
         is_header=True,
+        src_id=src_loader.manifest["id"] if preserve_src_id else None,
     )
     scribe = TomeScribe(writer=writer, manifest=manifest, log=log)
     scribe.start()
-    scribe.concat(df, keys)
+    df = src_loader.get_dataframe().loc[selector]
+    scribe.concat(df, list(df["key"]))
     scribe.finish()
 
-    reader = TomeReaderFs(root_path=tome_collection_root_path, tome_name=name, log=log)
+    reader = TomeReaderFs(root_path=output_path, tome_name=name, log=log)
 
     return TomeLoader(reader=reader, log=log)
 

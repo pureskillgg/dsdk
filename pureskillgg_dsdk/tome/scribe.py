@@ -36,6 +36,14 @@ class TomeScribe:
     def keyset(self):
         return self._keyset
 
+    @property
+    def path(self):
+        return self._writer.path
+
+    @property
+    def tome_name(self):
+        return self._writer.tome_name
+
     def start(self):
         self._writer.write_manifest(self._manifest.get())
         self._manifest.start_page()
@@ -45,13 +53,17 @@ class TomeScribe:
             raise Exception("Empty Tome not supported")
         if len(self._keyset) > 0:
             self._write()
-            self._manifest.finish()
-            self._writer.write_manifest(self._manifest.get())
+        self._manifest.finish()
+        self._writer.write_manifest(self._manifest.get())
 
     def concat(self, df, keys):
         self._concat_keys(keys)
         self._concat_df(df)
         self._on_data()
+
+    def set_manifest_data(self, data):
+        self._page_counter = len(data["pages"])
+        self._manifest.set(data)
 
     def _write(self):
         page = self._manifest.end_page(self._page_counter)

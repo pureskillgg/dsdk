@@ -2,17 +2,30 @@ import structlog
 
 
 class TomeLoader:
-    def __init__(self, *, reader, log: object = None):
+    def __init__(self, *, reader, has_header=True, log: object = None):
         self._reader = reader
         self._log = log if log is not None else structlog.get_logger()
         self._manifest = None
         self._metadata = None
+        self._exists = None
+        self.has_header = has_header
+        self.header = None
+
+        if self.has_header:
+            self.header = TomeLoader(
+                reader=self._reader.header, has_header=False, log=self._log
+            )
 
     @property
     def metadata(self):
         """Metadata"""
         self._load()
         return self._metadata
+
+    @property
+    def exists(self):
+        """If the tome exists"""
+        return self._reader.exists
 
     @property
     def manifest(self):

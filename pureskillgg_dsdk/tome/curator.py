@@ -1,5 +1,5 @@
 import os
-
+import pathlib
 import structlog
 
 from .header_tome import create_header_tome_from_fs, create_subheader_tome_from_fs
@@ -85,7 +85,8 @@ class TomeCuratorFs:
         loader = TomeLoader(reader=reader, log=self._log)
         return loader
 
-    def new_tome(
+    # pylint: disable=too-many-locals
+    def make_tome(
         self,
         tome_name,
         /,
@@ -94,6 +95,8 @@ class TomeCuratorFs:
         ds_reading_instructions=None,
         max_page_size_mb=None,
         max_page_row_count=None,
+        behavior_if_complete="pass",
+        behavior_if_partial="continue",
         limit_check_frequency=100,
     ):
         header_name = (
@@ -102,6 +105,8 @@ class TomeCuratorFs:
             else self._default_header_name
         )
         name = tome_name
+
+        existing_tome_loader = self.get_loader(name)
 
         header_loader = self.get_loader(header_name)
 
@@ -128,8 +133,24 @@ class TomeCuratorFs:
             scribe=scribe,
             ds_reading_instructions=ds_reading_instructions,
             ds_type=self._ds_type,
+            tome_loader=existing_tome_loader,
+            copy_header=copy_header_func,
+            behavior_if_complete=behavior_if_complete,
+            behavior_if_partial=behavior_if_partial,
         )
         return tomer
+
+
+def copy_header_func(header_loader, scribe, log):
+    path = str(pathlib.Path(header_loader.manifest["path"]).parent)
+    create_subheader_tome_from_fs(
+        "header",
+        src_tome_name=header_loader.manifest.get("tome"),
+        tome_collection_root_path=path,
+        dest_tome_name=scribe.tome_name,
+        preserve_src_id=True,
+        log=log,
+    )
 
 
 def get_env_option(name, value):
