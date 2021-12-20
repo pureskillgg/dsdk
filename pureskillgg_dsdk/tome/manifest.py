@@ -78,7 +78,7 @@ def content_name(page_number, subtype):
 
 def create_manifest(tome_name, path, ds_type, is_header, header_tome_name, src_id):
     return {
-        "id": str(uuid4()) if src_id is None else src_id,
+        "id": str(uuid4()),
         "sourceId": src_id,
         "type": "tome",
         "isHeader": is_header,
