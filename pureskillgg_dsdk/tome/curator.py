@@ -1,9 +1,9 @@
 import os
 import pathlib
 import structlog
+import pandas as pd
 
 from .header_tome import create_header_tome_from_fs, create_subheader_tome_from_fs
-
 
 from .loader import TomeLoader
 from .scribe import TomeScribe
@@ -14,14 +14,35 @@ from .reader_fs import TomeReaderFs
 
 
 class TomeCuratorFs:
+    """
+    Simple API to manage tomes.
+
+    Parameters
+    ----------
+    default_header_name : str, default=from env (PURESKILLGG_TOME_DEFAULT_HEADER_NAME)
+        Name of the default header.
+    ds_type : str, default=from env (PURESKILLGG_TOME_DS_TYPE)
+        Type of data science file to read from `ds_collection_root_path`.
+    tome_collection_root_path : str, default=from env (PURESKILLGG_TOME_COLLECTION_PATH)
+        Path leading to where tomes will be stored.
+    ds_collection_root_path : str, default=from env (PURESKILLGG_TOME_DS_COLLECTION_PATH)
+        Path leading to a series of (possibly nested) folders containing game Data Science files.
+    log : structlog.stdlib.BoundLogger
+        Logger used for logging logs.
+
+    See Also
+    --------
+    TomeMaker : Make tomes.
+    """
+
     def __init__(
         self,
         *,
-        default_header_name=None,
-        ds_type=None,
-        tome_collection_root_path=None,
-        ds_collection_root_path=None,
-        log=None,
+        default_header_name: str = None,
+        ds_type: str = None,
+        tome_collection_root_path: str = None,
+        ds_collection_root_path: str = None,
+        log: structlog.stdlib.BoundLogger = None,
     ):
         self._log = log if log is not None else structlog.get_logger()
         self._default_header_name = get_env_option(
@@ -35,7 +56,24 @@ class TomeCuratorFs:
             "ds_collection_path", ds_collection_root_path
         )
 
-    def create_header_tome(self, tome_name=None, /, *, path_depth=4):
+    def create_header_tome(
+        self, tome_name: str = None, /, *, path_depth: int = 4
+    ) -> TomeLoader:
+        """
+        Create the header tome.
+
+        Parameters
+        ----------
+        tome_name : str, default=`default_header_name`
+            Name of the header that will be created.
+        path depth : int, default=4
+            Folder depth to search for game Data Science files.
+
+        Returns
+        -------
+        TomeLoader
+            Loader for the header tome just created.
+        """
         name = tome_name if tome_name is not None else self._default_header_name
         return create_header_tome_from_fs(
             name,
@@ -47,8 +85,33 @@ class TomeCuratorFs:
         )
 
     def create_subheader_tome(
-        self, tome_name, selector=lambda df: [True] * len(df), /, *, src_tome_name=None
-    ):
+        self,
+        tome_name: str,
+        selector: callable = lambda df: [True] * len(df),
+        /,
+        *,
+        src_tome_name: str = None,
+    ) -> TomeLoader:
+        """
+        Create a subheader tome.
+
+        Parameters
+        ----------
+        tome_name : str, default=`default_header_name`
+            Name of the header that will be created.
+        selector : callable, default=lambda to select all rows
+            The selector is passed directly through to the header
+            dataframe and the final subheader tome will be equal to
+            `header_dataframe.loc[selector]`.
+        src_tome_name : str, default=`default_header_name`
+            Source header file. Should be the same as the
+            default header name in most cases.
+
+        Returns
+        -------
+        TomeLoader
+            Loader for the header tome just created.
+        """
         src_name = (
             src_tome_name if src_tome_name is not None else self._default_header_name
         )
@@ -60,23 +123,88 @@ class TomeCuratorFs:
             log=self._log,
         )
 
-    def get_dataframe(self, tome_name):
+    def get_dataframe(self, tome_name: str) -> pd.DataFrame:
+        """
+        Get the dataframe from a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+
+        Returns
+        -------
+        pd.DataFrame
+            Pandas dataframe containing the tome's data.
+        """
         loader = self.get_loader(tome_name)
         return loader.get_dataframe()
 
-    def get_keyset(self, tome_name):
+    def get_keyset(self, tome_name: str) -> list:
+        """
+        Get the keyset from a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+
+        Returns
+        -------
+        list
+            List containing the tome's keyset.
+        """
         loader = self.get_loader(tome_name)
         return loader.get_keyset()
 
-    def get_manifest(self, tome_name):
+    def get_manifest(self, tome_name: str) -> dict:
+        """
+        Get the manifest from a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the tome's manifest.
+        """
         loader = self.get_loader(tome_name)
         return loader.manifest
 
-    def iterate_pages(self, tome_name):
+    def iterate_pages(self, tome_name: str) -> TomeLoader.iterate_pages:
+        """
+        Iterate through pages of a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+
+        Returns
+        -------
+        TomeLoader.iterate_pages
+            Iterator for pages from TomeLoader.
+        """
         loader = self.get_loader(tome_name)
         return loader.iterate_pages()
 
-    def get_loader(self, tome_name):
+    def get_loader(self, tome_name: str) -> TomeLoader:
+        """
+        Get the loader for a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+
+        Returns
+        -------
+        TomeLoader
+            The TomeLoader instance for this tome.
+        """
         reader = TomeReaderFs(
             root_path=self._tome_collection_root_path,
             tome_name=tome_name,
@@ -88,10 +216,10 @@ class TomeCuratorFs:
     # pylint: disable=too-many-locals
     def make_tome(
         self,
-        tome_name,
+        tome_name: str,
         /,
         *,
-        header_tome_name=None,
+        header_tome_name: str = None,
         ds_reading_instructions=None,
         max_page_size_mb=None,
         max_page_row_count=None,

@@ -15,6 +15,7 @@ default_header_name = "header_tome"
 sub_header_name = "only_good_headers"
 new_tome_name = "round_end"
 continued_tome_name = "round_end_continued"
+pd.DataFrame()
 
 
 def create_curator_instance(tmp_path):
