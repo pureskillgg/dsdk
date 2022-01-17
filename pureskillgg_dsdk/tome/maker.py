@@ -81,7 +81,7 @@ class TomeMaker:
                 "minutes_elapsed": int(seconds_elapsed / 60),
                 "minutes_remaining": int(time_remaining / 60),
                 "hours_elapsed": int(seconds_elapsed / 60 / 60),
-                "hours_remaining": int(time_remaining / 60),
+                "hours_remaining": int(time_remaining / 60 / 60),
             }
             self._log.info("Tome Maker Update:", **meta)
 
