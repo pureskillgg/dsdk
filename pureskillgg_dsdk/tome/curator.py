@@ -1,5 +1,6 @@
 import os
 import pathlib
+from typing import List
 import structlog
 import pandas as pd
 
@@ -11,6 +12,8 @@ from .manifest import TomeManifest
 from .maker import TomeMaker
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
+
+from ..ds_io import ChannelInstruction
 
 
 class TomeCuratorFs:
@@ -220,13 +223,40 @@ class TomeCuratorFs:
         /,
         *,
         header_tome_name: str = None,
-        ds_reading_instructions=None,
-        max_page_size_mb=None,
-        max_page_row_count=None,
-        behavior_if_complete="pass",
-        behavior_if_partial="continue",
-        limit_check_frequency=100,
-    ):
+        ds_reading_instructions: List[ChannelInstruction] = None,
+        max_page_size_mb: float = None,
+        max_page_row_count: int = None,
+        limit_check_frequency: int = 100,
+        **kwargs,
+    ) -> TomeMaker:
+        """
+        Make a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+        ds_reading_instructions : ChannelInstruction, default=None
+            Instructions on how to read in each DS file. Default value
+            of None will read all channels and columns.
+        max_page_size_mb : float, default = None
+            Max size *in memory* that a tome can be. Generally it will be
+            2-10x smaller on disk. By default the scribe will not check.
+        max_page_row_count : int, default = None
+            Max number of rows that a tome can be. By default it will
+            not have a max row count.
+        limit_check_frequency : int
+            How often the scribe should check if it exceeded the max size or
+            max row count. This should be a multiple of the print frequency
+            which is set to 100.
+        **kwargs:
+            Keywords passed through to the TomeMaker.
+
+        Returns
+        -------
+        TomeMaker
+            The TomeMaker instance to make a tome.
+        """
         header_name = (
             header_tome_name
             if header_tome_name is not None
@@ -264,10 +294,10 @@ class TomeCuratorFs:
             ds_type=self._ds_type,
             tome_loader=existing_tome_loader,
             copy_header=copy_header_func,
-            behavior_if_complete=behavior_if_complete,
-            behavior_if_partial=behavior_if_partial,
+            **kwargs,
             log=self._log,
         )
+
         return tomer
 
 
