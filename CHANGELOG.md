@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.10.0 / 2022-01-17
+
+### Added
+
+- Docstrings and type hints to TomeCurator.
+
+### Changed
+
+- Updated modules with a `poetry update`.
+
+### Fixed
+
+- Incorrect time conversion when printing time left.
+
 ## 0.9.1 / 2021-12-20
 
 ### Fixed
