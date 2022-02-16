@@ -12,7 +12,8 @@ disable=
     missing-function-docstring,
     missing-module-docstring,
     too-few-public-methods,
-	
+    duplicate-code,
+
 [TYPECHECK]
 ignored-modules = rapidjson
 

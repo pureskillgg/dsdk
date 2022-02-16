@@ -4,7 +4,7 @@
 import pytest
 from structlog import get_logger
 
-from .ds_model import create_ds_models
+from .model import create_ds_models
 
 
 def test_no_models():
