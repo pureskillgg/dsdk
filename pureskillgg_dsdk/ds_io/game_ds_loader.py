@@ -6,6 +6,7 @@ import pandas as pd
 
 from .reader_fs import DsReaderFs
 from .reader_s3 import DsReaderS3
+from .normalize_instructions import normalize_instructions
 
 
 class ChannelInstruction(TypedDict):
@@ -40,13 +41,16 @@ class GameDsLoader:
         self._metadata = self._reader.read_metadata()
 
     def get_channels(
-        self, channel_instructions: Optional[List[ChannelInstruction]] = None
+        self,
+        channel_instructions: Optional[List[ChannelInstruction]] = None,
     ) -> Dict[str, pd.DataFrame]:
         """Read in data from a ds object
 
         Args:
-            channel_instructions (dict, optional): List that contains instructions
-                on how to read the channel. Each element must contain a key
+            channel_instructions (dict, optional): Instructions on how to read the ds
+                file where multiple instructions for a channel will be smartly combined.
+                Instructions indicate how to read each channel.
+                Each element of a set of instructions must contain a key
                 called `channel` and optionally have a key named `columns`
                 which is a List of columns to be read in. Not including the
                 `columns` key implies you want to read in all columns.
@@ -75,6 +79,16 @@ class GameDsLoader:
             # read channels with specific columns
             data = loader.get_channels([
                 {"channel":"ch1","columns":["col1","col3"]}
+            ])
+
+            # combine sets of instructions
+            data = loader.get_channels([
+                {"channel":"ch1","columns":["col1","col3"]},
+                {"channel":"ch1","columns":["col1","col2"]}
+            ])
+            # same as above
+            data = loader.get_channels([
+                {"channel":"ch1","columns":["col1","col2","col3"]}
             ])
         """
         self._load()
@@ -125,15 +139,27 @@ class GameDsLoader:
         return channel
 
     def _normalize_channel_instructions(
-        self, channel_instructions: List[ChannelInstruction]
+        self, channel_instructions: Union[List[ChannelInstruction], None]
     ) -> List[ChannelInstruction]:
-        if channel_instructions is not None:
-            return channel_instructions
+        if not is_valid_instructions(channel_instructions):
+            raise Exception(
+                f"The instructions were not a list of instructions or None: {channel_instructions}"
+            )
+        if isinstance(channel_instructions, list):
+            return normalize_instructions(channel_instructions)
         instructions = []
         for channel in self._manifest["channels"]:
             single_instruction: ChannelInstruction = {"channel": channel["channel"]}
             instructions.append(single_instruction)
         return instructions
+
+
+def is_valid_instructions(channel_instructions: Union[List[ChannelInstruction], None]):
+    if isinstance(channel_instructions, list):
+        return True
+    if channel_instructions is None:
+        return True
+    return False
 
 
 def first_true(

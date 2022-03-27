@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 from .game_ds_loader import GameDsLoader
 from .reader_fs import DsReaderFs
+from .normalize_instructions import normalize_instructions
 
 
 def create_test_game_ds_loader():
