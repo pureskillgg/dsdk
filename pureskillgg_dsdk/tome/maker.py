@@ -4,6 +4,7 @@ import structlog
 import pandas as pd
 
 from ..ds_io import DsReaderFs, GameDsLoader
+from .constants import filter_ds_reader_logs
 
 
 class TomeMaker:
@@ -47,6 +48,8 @@ class TomeMaker:
         if len(self.keyset) == 0:
             return
         self._scribe.start()
+        self._log = structlog.wrap_logger(self._log, processors=[filter_ds_reader_logs])
+
         start_time = time.time()
         key_counter = 0
         for key in self.keyset:

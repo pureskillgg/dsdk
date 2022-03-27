@@ -8,6 +8,7 @@ from .scribe import TomeScribe
 from .manifest import TomeManifest
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
+from .constants import filter_ds_reader_logs
 
 
 def default_tome_name():
@@ -26,7 +27,13 @@ def create_header_tome_from_fs(
 ):
     """Make the header tome"""
     name = default_tome_name() if tome_name is None else tome_name
-    log = log if log is not None else structlog.get_logger()
+    log = (
+        log
+        if log is not None
+        else structlog.wrap_logger(
+            structlog.get_logger(), processors=[filter_ds_reader_logs]
+        )
+    )
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
     manifest = TomeManifest(
