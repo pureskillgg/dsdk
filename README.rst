@@ -1,5 +1,5 @@
 PureSkill.gg Data Science Development Kit
-=======================
+=========================================
 
 |PyPI| |GitHub Actions|
 

@@ -2,8 +2,8 @@
 name = "pureskillgg-dsdk"
 version = "0.10.0"
 description = "Python Data Science Development Kit."
-authors = ["PureSkill.gg <secure@pureskill.gg>"]
-license = "SEE LICENSE IN LICENSE.txt"
+authors = ["PureSkill.gg <contact@pureskill.gg>"]
+license = "MIT"
 readme = "README.rst"
 homepage = "https://github.com/pureskillgg/dsdk"
 repository = "https://github.com/pureskillgg/dsdk"
