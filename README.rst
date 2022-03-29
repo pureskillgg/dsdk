@@ -1,8 +1,11 @@
 PureSkill.gg Data Science Development Kit
 =======================
 
-|GitHub Actions|
+|PyPI| |GitHub Actions|
 
+.. |PyPI| image:: https://img.shields.io/pypi/v/pureskillgg-dsdk.svg
+   :target: https://pypi.python.org/pypi/pureskillgg-dsdk
+   :alt: PyPI
 .. |GitHub Actions| image:: https://github.com/pureskillgg/dsdk/workflows/main/badge.svg
    :target: https://github.com/pureskillgg/dsdk/actions
    :alt: GitHub Actions
@@ -17,7 +20,8 @@ Do data science with CS:GO.
 Installation
 ------------
 
-This package is registered on `JFrog Artifactory`_.
+This package is registered on the `Python Package Index (PyPI)`_
+as pureskillgg_dsdk_.
 
 Install it with
 
@@ -25,7 +29,8 @@ Install it with
 
     $ poetry add pureskillgg_dsdk
 
-.. _JFrog Artifactory: https://pureskillgg.jfrog.io/
+.. _pureskillgg_dsdk: https://pypi.python.org/pypi/pureskillgg-dsdk
+.. _Python Package Index (PyPI): https://pypi.python.org/
 
 Development and Testing
 -----------------------
@@ -119,8 +124,7 @@ GitHub Actions
 
 The following repository secrets must be set on GitHub Actions.
 
-- ``JFROG_USER``: User name for publishing on JFrog.
-- ``JFROG_API_KEY``: API token for publishing on JFrog.
+- ``PYPI_API_TOKEN``: API token for publishing on PyPI.
 
 These must be set manually.
 
