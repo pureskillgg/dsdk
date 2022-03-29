@@ -15,7 +15,7 @@ Python Data Science Development Kit.
 Description
 -----------
 
-Do data science with CS:GO.
+Do data science for games.
 
 Installation
 ------------
