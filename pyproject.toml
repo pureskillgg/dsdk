@@ -10,7 +10,7 @@ repository = "https://github.com/pureskillgg/dsdk"
 include = ['poetry.lock']
 
 [tool.poetry.dependencies]
-python = ">=3.9"
+python = "^3.9"
 boto3 = "^1.12.32"
 pandas = "^1.2.1"
 hdbscan = "^0.8.27"
