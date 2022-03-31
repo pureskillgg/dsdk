@@ -90,7 +90,7 @@ class TomeMaker:
 
     def _get_ds_channels_from_fs(self, key):
         path_to_ds = self._key_to_path(key)
-        root_path = os.path.join(*path_to_ds.split(os.path.sep)[:-1])
+        root_path = (os.sep).join(path_to_ds.split(os.path.sep)[:-1])
         ds_key = path_to_ds.split(os.path.sep)[-1]
         ds_reader = self._reader_class(
             root_path=root_path,
