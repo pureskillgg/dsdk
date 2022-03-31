@@ -16,6 +16,7 @@ pandas = "^1.2.1"
 hdbscan = "^0.8.27"
 python-rapidjson = "^1.6"
 pyarrow = "^7.0.0"
+structlog = "^21.5.0"
 
 [tool.poetry.dev-dependencies]
 black = "^22.3.0"
@@ -27,7 +28,6 @@ pytest-runner = "^6.0.0"
 pytest-watch = "^4.2.0"
 twine = "^3.0.0"
 wheel = "^0.34.0"
-structlog = "^21.5.0"
 
 [build-system]
 requires = ["poetry>=1.0"]
