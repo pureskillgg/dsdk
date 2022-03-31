@@ -109,7 +109,7 @@ def create_subheader_tome_from_fs(
 
 def get_ds_paths_from_glob(ds_root_path, path_depth, ds_type):
     paths = glob(os.path.join(ds_root_path, *(["*"] * path_depth), ds_type))
-    paths = [os.path.join(*path.split(os.path.sep)[:-1]) for path in paths]
+    paths = [(os.sep).join(path.split(os.sep)[:-1]) for path in paths]
     paths = set(paths)
     return paths
 

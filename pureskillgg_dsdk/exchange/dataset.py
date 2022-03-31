@@ -52,11 +52,19 @@ class DataexchangeDataset:
         res = self._client.list_revision_assets(
             DataSetId=self.dataset_id, RevisionId=revision_id
         )
-        return res.get("Assets")
+        assets = res.get("Assets")
+        while "NextToken" in res:
+            res = self._client.list_revision_assets(
+                DataSetId=self.dataset_id,
+                RevisionId=revision_id,
+                NextToken=res.get("NextToken"),
+            )
+            assets.extend(res.get("Assets", []))
+        return assets
 
     def _download_asset(self, asset):
         asset_name = asset.get("Name")
-        output_path = os.path.join(self.path, asset_name)
+        output_path = os.path.join(self.path, (os.sep).join(asset_name.split("/")))
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
 
