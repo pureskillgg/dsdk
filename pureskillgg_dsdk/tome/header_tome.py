@@ -115,7 +115,7 @@ def get_ds_paths_from_glob(ds_root_path, path_depth, ds_type):
 
 
 def fetch_ds_header_from_fs(ds_path, ds_type, log):
-    root_path = os.path.join(*ds_path.split(os.path.sep)[:-1])
+    root_path = (os.sep).join(ds_path.split(os.sep)[:-1])
     ds_key = ds_path.split(os.path.sep)[-1]
     ds_reader = DsReaderFs(
         root_path=root_path,
