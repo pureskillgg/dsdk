@@ -13,7 +13,7 @@ from .maker import TomeMaker
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
 
-from ..ds_io import ChannelInstruction
+from ..ds_io import ChannelInstruction, DsReaderFs, GameDsLoader
 
 
 class TomeCuratorFs:
@@ -215,6 +215,48 @@ class TomeCuratorFs:
         )
         loader = TomeLoader(reader=reader, log=self._log)
         return loader
+
+    def get_header_loader(self) -> TomeLoader:
+        """
+        Get the loader for the header tome.
+
+        Returns
+        -------
+        TomeLoader
+            The TomeLoader instance for the header tome.
+        """
+        return self.get_loader(self._default_header_name)
+
+    def get_single_match(self, match_index: int = 0) -> GameDsLoader:
+        """
+        Get the data for a single match.
+
+        Parameters
+        ----------
+        match_index : int, default=0
+            Index of the match to load.
+
+        Returns
+        -------
+        GameDsLoader
+            The GameDsLoader instance for this tome.
+        """
+        loader = self.get_header_loader()
+        df_header = loader.get_dataframe()
+
+        full_path = df_header["ds_path"][match_index]
+        key = df_header["key"][match_index]
+        root_path = full_path.split(key)[0]
+        manifest_key = os.sep.join([key, self._ds_type])
+
+        csds_reader = DsReaderFs(
+            root_path=root_path,
+            manifest_key=manifest_key,
+        )
+
+        csds_loader = GameDsLoader(reader=csds_reader)
+
+        return csds_loader
 
     # pylint: disable=too-many-locals
     def make_tome(
