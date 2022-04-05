@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pureskillgg-dsdk"
-version = "0.19.0"
+version = "0.20.0"
 description = "Python Data Science Development Kit."
 authors = ["PureSkill.gg <contact@pureskill.gg>"]
 license = "MIT"
