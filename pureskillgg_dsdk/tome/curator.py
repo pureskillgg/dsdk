@@ -1,5 +1,6 @@
 import os
 import pathlib
+import random
 from typing import List
 import structlog
 import pandas as pd
@@ -227,25 +228,59 @@ class TomeCuratorFs:
         """
         return self.get_loader(self._default_header_name)
 
-    def get_single_match(self, match_index: int = 0) -> GameDsLoader:
+    def get_random_match(self, subheader_name: str = None, /):
         """
-        Get the data for a single match.
+        Get the data for a single random match.
 
         Parameters
         ----------
-        match_index : int, default=0
-            Index of the match to load.
+        subheader_name : str, default=from env (PURESKILLGG_TOME_DEFAULT_HEADER_NAME)
+            Name of the subheader to use. Not specifying this will use the default header.
 
         Returns
         -------
         GameDsLoader
             The GameDsLoader instance for this tome.
         """
-        loader = self.get_header_loader()
+        loader = (
+            self.get_header_loader()
+            if subheader_name is None
+            else self.get_loader(subheader_name)
+        )
+
+        keyset = loader.get_keyset()
+
+        index = random.choice(range(0, len(keyset)))
+        return self.get_match_by_index(index, subheader_name)
+
+    def get_match_by_index(
+        self, index: int = 0, subheader_name: str = None, /
+    ) -> GameDsLoader:
+        """
+        Get the data for a single match.
+
+        Parameters
+        ----------
+        index : int, default=0
+            Index of the match to load.
+        subheader_name : str, default=from env (PURESKILLGG_TOME_DEFAULT_HEADER_NAME)
+            Name of the subheader to use. Not specifying this will use the default header.
+
+        Returns
+        -------
+        GameDsLoader
+            The GameDsLoader instance for this tome.
+        """
+        loader = (
+            self.get_header_loader()
+            if subheader_name is None
+            else self.get_loader(subheader_name)
+        )
+
         df_header = loader.get_dataframe()
 
-        full_path = df_header["ds_path"][match_index]
-        key = df_header["key"][match_index]
+        full_path = df_header["ds_path"][index]
+        key = df_header["key"][index]
         root_path = full_path.split(key)[0]
         manifest_key = os.sep.join([key, self._ds_type])
 
