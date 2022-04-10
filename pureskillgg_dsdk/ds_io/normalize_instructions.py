@@ -3,6 +3,7 @@ import itertools
 
 def normalize_instructions(instructions):
     final_instructions = []
+    instructions = sorted(instructions, key=lambda x: x["channel"])
     channel_dict = {
         key: list(item)
         for key, item in itertools.groupby(instructions, lambda x: x["channel"])
