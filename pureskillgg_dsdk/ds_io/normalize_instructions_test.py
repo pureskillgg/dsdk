@@ -60,3 +60,25 @@ def test_combining_several_instructions():
         {"channel": "ch2", "columns": ["col1", "col2", "col4", "col3"]},
         {"channel": "ch3"},
     ]
+
+
+def test_combining_out_of_order_instructions():
+    instructions = normalize_instructions(
+        [
+            {"channel": "ch3", "columns": ["col1", "col2"]},
+            {"channel": "ch1", "columns": ["col1"]},
+            {"channel": "ch2", "columns": ["col1", "col2"]},
+            {"channel": "ch2", "columns": ["col1"]},
+            {"channel": "ch2", "columns": ["col4"]},
+            {"channel": "ch2", "columns": ["col1", "col2", "col3", "col4"]},
+            {"channel": "ch3", "columns": ["col1"]},
+            {"channel": "ch3", "columns": ["col3"]},
+            {"channel": "ch1", "columns": ["col2"]},
+            {"channel": "ch3"},
+        ]
+    )
+    assert instructions == [
+        {"channel": "ch1", "columns": ["col1", "col2"]},
+        {"channel": "ch2", "columns": ["col1", "col2", "col4", "col3"]},
+        {"channel": "ch3"},
+    ]
