@@ -43,13 +43,10 @@ class TomeLoader:
     def get_dataframe(self):
         self._load()
 
-        df = None
-        for page in self.manifest["pages"]:
-            df_temp = self._reader.read_page_dataframe(page)
-            if df is None:
-                df = df_temp
-            else:
-                df = df.append(df_temp)
+        dfs = [
+            self._reader.read_page_dataframe(page) for page in self.manifest["pages"]
+        ]
+        df = pd.concat(dfs)
         return df
 
     def get_keyset(self):
