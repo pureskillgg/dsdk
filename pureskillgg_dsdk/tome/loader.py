@@ -1,5 +1,5 @@
 import structlog
-
+import pandas as pd
 
 class TomeLoader:
     def __init__(self, *, reader, has_header=True, log: object = None):
