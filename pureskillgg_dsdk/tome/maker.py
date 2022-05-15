@@ -89,12 +89,11 @@ class TomeMaker:
             self._log.info("Tome Maker Update:", **meta)
 
     def _get_ds_channels_from_fs(self, key):
-        path_to_ds = self._key_to_path(key)
-        root_path = (os.sep).join(path_to_ds.split(os.path.sep)[:-1])
-        ds_key = path_to_ds.split(os.path.sep)[-1]
+        root_path = self._key_to_root_path(key)
+        manifest_key = key
         ds_reader = self._reader_class(
             root_path=root_path,
-            manifest_key=os.path.join(ds_key, self._ds_type),
+            manifest_key=manifest_key,
             log=self._log,
         )
         ds_loader = GameDsLoader(reader=ds_reader, log=self._log)
@@ -148,13 +147,13 @@ class TomeMaker:
                 action = passthrough
             action()
 
-        self._key_to_path_hashmap = self._header_dataframe.set_index("key").to_dict()[
-            "ds_path"
+        self._key_to_root_path_hashmap = self._header_dataframe.set_index("key").to_dict()[
+            "root_path"
         ]
         self._loaded = True
 
     def _copy_header(self):
         self._copy_header_func(self._header_loader, self._scribe, self._log)
 
-    def _key_to_path(self, key: str) -> str:
-        return self._key_to_path_hashmap[key]
+    def _key_to_root_path(self, key: str) -> str:
+        return self._key_to_root_path_hashmap[key]
