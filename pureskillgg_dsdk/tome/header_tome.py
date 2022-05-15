@@ -1,7 +1,7 @@
 import os
 from glob import glob
-import structlog
 import warnings
+import structlog
 
 from ..ds_io import DsReaderFs, GameDsLoader
 from .loader import TomeLoader
@@ -53,7 +53,7 @@ def create_header_tome_from_fs(
         ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key, log)
         job_id = ds_loader.manifest["jobId"]
         df = ds_loader.get_channel({"channel": "header"})
-        df["ds_path"] = ds_path
+        df["ds_path"] = os.path.join([ds_collection_root_path, manifest_key])
         df["key"] = job_id
         scribe.concat(df, job_id)
 
