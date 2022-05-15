@@ -283,12 +283,9 @@ class TomeCuratorFs:
 
         df_header = loader.get_dataframe()
 
-        root_path = df_header["root_path"][index]
-        manifest_key = df_header["manifest_key"][index]
-
         csds_reader = DsReaderFs(
-            root_path=root_path,
-            manifest_key=manifest_key,
+            root_path=self._ds_collection_root_path,
+            manifest_key=df_header["key"][index],
         )
 
         csds_loader = GameDsLoader(reader=csds_reader)
