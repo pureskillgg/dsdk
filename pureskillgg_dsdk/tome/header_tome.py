@@ -50,12 +50,10 @@ def create_header_tome_from_fs(
         ds_loader = fetch_ds_loader_from_fs(
             ds_collection_root_path, manifest_key_path, log
         )
-        job_id = ds_loader.manifest["jobId"]
-        manifest_key = ds_loader.manifest["key"]
         df = ds_loader.get_channel({"channel": "header"})
-        df["key"] = manifest_key
-        df["match_id"] = job_id
-        scribe.concat(df, manifest_key)
+        df["key"] = ds_loader.manifest["key"]
+        df["match_id"] = ds_loader.manifest["jobId"]
+        scribe.concat(df, ds_loader.manifest["key"])
 
     scribe.finish()
 
