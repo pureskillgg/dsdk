@@ -371,6 +371,7 @@ class TomeCuratorFs:
             scribe=scribe,
             ds_reading_instructions=ds_reading_instructions,
             ds_type=self._ds_type,
+            ds_collection_root_path=self._ds_collection_root_path,
             tome_loader=existing_tome_loader,
             copy_header=copy_header_func,
             **kwargs,

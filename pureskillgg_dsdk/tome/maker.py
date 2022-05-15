@@ -16,6 +16,7 @@ class TomeMaker:
         ds_type,
         tome_loader,
         copy_header,
+        ds_collection_root_path,
         behavior_if_complete="pass",
         behavior_if_partial="continue",
         print_status_frequency=100,
@@ -39,7 +40,7 @@ class TomeMaker:
         self._reader_class = reader_class
         self._current_key = None
         self._loaded = False
-        self._key_to_root_path_hashmap = {}
+        self._ds_collection_root_path = ds_collection_root_path
 
     def iterate(self):
         """Get data for the next key"""
@@ -88,7 +89,7 @@ class TomeMaker:
             self._log.info("Tome Maker Update:", **meta)
 
     def _get_ds_channels_from_fs(self, key):
-        root_path = self._key_to_root_path(key)
+        root_path = self._ds_collection_root_path
         manifest_key = key
         ds_reader = self._reader_class(
             root_path=root_path,
@@ -146,13 +147,8 @@ class TomeMaker:
                 action = passthrough
             action()
 
-        self._key_to_root_path_hashmap = self._header_dataframe.set_index(
-            "key"
-        ).to_dict()["root_path"]
         self._loaded = True
 
     def _copy_header(self):
         self._copy_header_func(self._header_loader, self._scribe, self._log)
 
-    def _key_to_root_path(self, key: str) -> str:
-        return self._key_to_root_path_hashmap[key]

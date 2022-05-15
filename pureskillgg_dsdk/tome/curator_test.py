@@ -36,7 +36,7 @@ def create_header_and_subheader(curator):
     return curator.create_subheader_tome(
         sub_header_name,
         lambda df: df["key"]
-        != r"csds\2022\05\10\0a1effe9-262a-4828-bd4e-8a4265905905\csds",
+        != "csds/2022/05/10/0a1effe9-262a-4828-bd4e-8a4265905905/csds",
     )
 
 
@@ -48,8 +48,6 @@ def test_create_header_tome(tmp_path):
     df = loader.get_dataframe()
     keyset = loader.get_keyset()
     manifest = loader.manifest
-    # raise Exception(list(df['key']))
-    # raise Exception(keyset)
 
     assert len(df) == len(keyset)
     assert len(df) == 3

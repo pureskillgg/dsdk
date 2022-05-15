@@ -37,19 +37,19 @@ def create_header_tome_from_fs(
     )
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    manifest_tome = TomeManifest(
+    tome_manifest = TomeManifest(
         tome_name=name, path=writer.path, ds_type=ds_type, is_header=True
     )
-    scribe = TomeScribe(manifest=manifest_tome, writer=writer, log=log)
+    scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
     scribe.start()
 
-    for manifest_key in get_manifest_keys_from_glob(ds_collection_root_path, ds_type):
-        ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key, log)
+    for manifest_key_path in get_manifest_key_paths_from_glob(ds_collection_root_path, ds_type):
+        ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key_path, log)
         job_id = ds_loader.manifest["jobId"]
+        manifest_key = ds_loader.manifest["key"]
         df = ds_loader.get_channel({"channel": "header"})
         df["key"] = manifest_key
-        df["root_path"] = ds_collection_root_path
         df["match_id"] = job_id
         scribe.concat(df, manifest_key)
 
@@ -109,7 +109,7 @@ def create_subheader_tome_from_fs(
     return TomeLoader(reader=reader, log=log)
 
 
-def get_manifest_keys_from_glob(ds_root_path, ds_type):
+def get_manifest_key_paths_from_glob(ds_root_path, ds_type):
     paths = glob(os.path.join(ds_root_path, "*", "**", ds_type), recursive=True)
     manifest_keys = [path[len(ds_root_path) + len(os.sep) :] for path in paths]
     manifest_keys = set(manifest_keys)
