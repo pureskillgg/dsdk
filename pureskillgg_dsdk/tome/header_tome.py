@@ -52,7 +52,7 @@ def create_header_tome_from_fs(
         )
         df = ds_loader.get_channel({"channel": "header"})
         df["key"] = ds_loader.manifest["key"]
-        df["match_id"] = ds_loader.manifest["jobId"]
+        df["match_id"] = ds_loader.manifest["id"]
         scribe.concat(df, ds_loader.manifest["key"])
 
     scribe.finish()
