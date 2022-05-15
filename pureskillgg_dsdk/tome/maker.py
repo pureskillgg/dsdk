@@ -151,4 +151,3 @@ class TomeMaker:
 
     def _copy_header(self):
         self._copy_header_func(self._header_loader, self._scribe, self._log)
-

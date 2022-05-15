@@ -44,8 +44,12 @@ def create_header_tome_from_fs(
 
     scribe.start()
 
-    for manifest_key_path in get_manifest_key_paths_from_glob(ds_collection_root_path, ds_type):
-        ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key_path, log)
+    for manifest_key_path in get_manifest_key_paths_from_glob(
+        ds_collection_root_path, ds_type
+    ):
+        ds_loader = fetch_ds_loader_from_fs(
+            ds_collection_root_path, manifest_key_path, log
+        )
         job_id = ds_loader.manifest["jobId"]
         manifest_key = ds_loader.manifest["key"]
         df = ds_loader.get_channel({"channel": "header"})
