@@ -28,14 +28,15 @@ def create_curator_instance(tmp_path):
 
 
 def create_header(curator):
-    return curator.create_header_tome(path_depth=1)
+    return curator.create_header_tome()
 
 
 def create_header_and_subheader(curator):
     create_header(curator)
     return curator.create_subheader_tome(
         sub_header_name,
-        lambda df: df["key"] != "0F9P4Bte2Z1GLiuOsryY",
+        lambda df: df["key"]
+        != "csds/2022/05/10/0a1effe9-262a-4828-bd4e-8a4265905905/csds",
     )
 
 
@@ -49,7 +50,7 @@ def test_create_header_tome(tmp_path):
     manifest = loader.manifest
 
     assert len(df) == len(keyset)
-    assert len(df) == 4
+    assert len(df) == 3
     assert isinstance(manifest, dict)
 
 
@@ -61,9 +62,8 @@ def test_create_subheader_tome(tmp_path):
     df = loader.get_dataframe()
     keyset = loader.get_keyset()
     manifest = loader.manifest
-
     assert len(df) == len(keyset)
-    assert len(df) == 3
+    assert len(df) == 2
     assert isinstance(manifest, dict)
 
 
@@ -227,3 +227,16 @@ def test_make_tome_complete_behavior_overwrite(tmp_path):
     for data, _ in tomer.iterate():
         tomer.concat(data["round_end"])
     assert tome_id != curator.get_manifest(continued_tome_name)["id"]
+
+
+def test_get_random_match(tmp_path):
+    tmp_path = str(tmp_path)
+    curator = create_curator_instance(tmp_path)
+    create_header_and_subheader(curator)
+
+    loader = curator.get_random_match()
+
+    manifest = loader.manifest
+    data = loader.get_channels()
+
+    assert len(manifest["channels"]) == len(data)

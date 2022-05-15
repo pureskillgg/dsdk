@@ -15,6 +15,7 @@ def default_tome_name():
     return "header"
 
 
+# pylint: disable=unused-argument
 def create_header_tome_from_fs(
     tome_name=None,
     /,
@@ -22,7 +23,7 @@ def create_header_tome_from_fs(
     ds_type="csds",
     tome_collection_root_path="tomes",
     ds_collection_root_path="data",
-    path_depth: int = 4,
+    path_depth=None,
     log=None,
 ):
     """Make the header tome"""
@@ -36,20 +37,23 @@ def create_header_tome_from_fs(
     )
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    manifest = TomeManifest(
+    tome_manifest = TomeManifest(
         tome_name=name, path=writer.path, ds_type=ds_type, is_header=True
     )
-    scribe = TomeScribe(manifest=manifest, writer=writer, log=log)
+    scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
     scribe.start()
 
-    for ds_path in get_ds_paths_from_glob(ds_collection_root_path, path_depth, ds_type):
-        ds_loader = fetch_ds_header_from_fs(ds_path, ds_type, log)
-        job_id = ds_loader.manifest["jobId"]
+    for manifest_key_path in get_manifest_key_paths_from_glob(
+        ds_collection_root_path, ds_type
+    ):
+        ds_loader = fetch_ds_loader_from_fs(
+            ds_collection_root_path, manifest_key_path, log
+        )
         df = ds_loader.get_channel({"channel": "header"})
-        df["ds_path"] = ds_path
-        df["key"] = job_id
-        scribe.concat(df, job_id)
+        df["key"] = ds_loader.manifest["key"]
+        df["match_id"] = ds_loader.manifest["id"]
+        scribe.concat(df, ds_loader.manifest["key"])
 
     scribe.finish()
 
@@ -107,19 +111,17 @@ def create_subheader_tome_from_fs(
     return TomeLoader(reader=reader, log=log)
 
 
-def get_ds_paths_from_glob(ds_root_path, path_depth, ds_type):
-    paths = glob(os.path.join(ds_root_path, *(["*"] * path_depth), ds_type))
-    paths = [(os.sep).join(path.split(os.sep)[:-1]) for path in paths]
-    paths = set(paths)
-    return paths
+def get_manifest_key_paths_from_glob(ds_root_path, ds_type):
+    paths = glob(os.path.join(ds_root_path, "*", "**", ds_type), recursive=True)
+    manifest_keys = [path[len(ds_root_path) + len(os.sep) :] for path in paths]
+    manifest_keys = set(manifest_keys)
+    return manifest_keys
 
 
-def fetch_ds_header_from_fs(ds_path, ds_type, log):
-    root_path = (os.sep).join(ds_path.split(os.sep)[:-1])
-    ds_key = ds_path.split(os.path.sep)[-1]
+def fetch_ds_loader_from_fs(root_path, manifest_key, log):
     ds_reader = DsReaderFs(
         root_path=root_path,
-        manifest_key=os.path.join(ds_key, ds_type),
+        manifest_key=manifest_key,
         log=log,
     )
     ds_loader = GameDsLoader(reader=ds_reader, log=log)

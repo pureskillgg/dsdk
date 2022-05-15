@@ -1,6 +1,7 @@
 import os
 import pathlib
 import random
+import warnings
 from typing import List
 import structlog
 import pandas as pd
@@ -71,20 +72,23 @@ class TomeCuratorFs:
         tome_name : str, default=`default_header_name`
             Name of the header that will be created.
         path depth : int, default=4
-            Folder depth to search for game Data Science files.
+            DEPRECATED. Please do not use. Search is recursive.
 
         Returns
         -------
         TomeLoader
             Loader for the header tome just created.
         """
+        if path_depth is not None:
+            warnings.warn(
+                "Warning: the keyword path_depth is deprecated. It is not needed."
+            )
         name = tome_name if tome_name is not None else self._default_header_name
         return create_header_tome_from_fs(
             name,
             ds_type=self._ds_type,
             tome_collection_root_path=self._tome_collection_root_path,
             ds_collection_root_path=self._ds_collection_root_path,
-            path_depth=path_depth,
             log=self._log,
         )
 
@@ -279,14 +283,9 @@ class TomeCuratorFs:
 
         df_header = loader.get_dataframe()
 
-        full_path = df_header["ds_path"][index]
-        key = df_header["key"][index]
-        root_path = full_path.split(key)[0]
-        manifest_key = os.sep.join([key, self._ds_type])
-
         csds_reader = DsReaderFs(
-            root_path=root_path,
-            manifest_key=manifest_key,
+            root_path=self._ds_collection_root_path,
+            manifest_key=df_header["key"][index],
         )
 
         csds_loader = GameDsLoader(reader=csds_reader)
@@ -369,6 +368,7 @@ class TomeCuratorFs:
             scribe=scribe,
             ds_reading_instructions=ds_reading_instructions,
             ds_type=self._ds_type,
+            ds_collection_root_path=self._ds_collection_root_path,
             tome_loader=existing_tome_loader,
             copy_header=copy_header_func,
             **kwargs,

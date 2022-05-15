@@ -13,9 +13,9 @@ class DsReaderFs:
         self,
         *,
         root_path: str,
-        log: object = None,
-        manifest_key: Optional[str] = None,
+        manifest_key: str,
         prefix: Optional[str] = None,
+        log: object = None,
     ):
         self._log = log if log is not None else structlog.get_logger()
         self._log = self._log.bind(
