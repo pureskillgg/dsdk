@@ -1,6 +1,7 @@
 import os
 from glob import glob
 import structlog
+import warnings
 
 from ..ds_io import DsReaderFs, GameDsLoader
 from .loader import TomeLoader
@@ -22,10 +23,13 @@ def create_header_tome_from_fs(
     ds_type="csds",
     tome_collection_root_path="tomes",
     ds_collection_root_path="data",
-    path_depth: int = 4,
+    path_depth = None,
     log=None,
 ):
     """Make the header tome"""
+    if path_depth is not None:
+        warnings.warn("Warning: the keyword path_depth is deprecated. It is not needed.")
+
     name = default_tome_name() if tome_name is None else tome_name
     log = (
         log
@@ -36,15 +40,15 @@ def create_header_tome_from_fs(
     )
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    manifest = TomeManifest(
+    manifest_tome = TomeManifest(
         tome_name=name, path=writer.path, ds_type=ds_type, is_header=True
     )
-    scribe = TomeScribe(manifest=manifest, writer=writer, log=log)
+    scribe = TomeScribe(manifest=manifest_tome, writer=writer, log=log)
 
     scribe.start()
 
-    for ds_path in get_ds_paths_from_glob(ds_collection_root_path, path_depth, ds_type):
-        ds_loader = fetch_ds_header_from_fs(ds_path, ds_type, log)
+    for manifest_key in get_manifest_keys_from_glob(ds_collection_root_path, ds_type):
+        ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key, log)
         job_id = ds_loader.manifest["jobId"]
         df = ds_loader.get_channel({"channel": "header"})
         df["ds_path"] = ds_path
@@ -107,19 +111,17 @@ def create_subheader_tome_from_fs(
     return TomeLoader(reader=reader, log=log)
 
 
-def get_ds_paths_from_glob(ds_root_path, path_depth, ds_type):
-    paths = glob(os.path.join(ds_root_path, *(["*"] * path_depth), ds_type))
+def get_manifest_keys_from_glob(ds_root_path, ds_type):
+    paths = glob(os.path.join(ds_root_path, "**", ds_type), recursive = True)
     paths = [(os.sep).join(path.split(os.sep)[:-1]) for path in paths]
     paths = set(paths)
     return paths
 
 
-def fetch_ds_header_from_fs(ds_path, ds_type, log):
-    root_path = (os.sep).join(ds_path.split(os.sep)[:-1])
-    ds_key = ds_path.split(os.path.sep)[-1]
+def fetch_ds_loader_from_fs(root_path, manifest_key, log):
     ds_reader = DsReaderFs(
         root_path=root_path,
-        manifest_key=os.path.join(ds_key, ds_type),
+        manifest_key=manifest_key,
         log=log,
     )
     ds_loader = GameDsLoader(reader=ds_reader, log=log)
