@@ -71,7 +71,7 @@ class TomeCuratorFs:
         tome_name : str, default=`default_header_name`
             Name of the header that will be created.
         path depth : int, default=4
-            Folder depth to search for game Data Science files.
+            DEPRECATED. Please do not use. Search is recursive.
 
         Returns
         -------
@@ -84,7 +84,6 @@ class TomeCuratorFs:
             ds_type=self._ds_type,
             tome_collection_root_path=self._tome_collection_root_path,
             ds_collection_root_path=self._ds_collection_root_path,
-            path_depth=path_depth,
             log=self._log,
         )
 
@@ -279,10 +278,8 @@ class TomeCuratorFs:
 
         df_header = loader.get_dataframe()
 
-        full_path = df_header["ds_path"][index]
-        key = df_header["key"][index]
-        root_path = full_path.split(key)[0]
-        manifest_key = os.sep.join([key, self._ds_type])
+        root_path = df_header["root_path"][index]
+        manifest_key = df_header["manifest_key"][index]
 
         csds_reader = DsReaderFs(
             root_path=root_path,

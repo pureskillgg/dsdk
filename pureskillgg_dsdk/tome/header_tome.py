@@ -53,9 +53,10 @@ def create_header_tome_from_fs(
         ds_loader = fetch_ds_loader_from_fs(ds_collection_root_path, manifest_key, log)
         job_id = ds_loader.manifest["jobId"]
         df = ds_loader.get_channel({"channel": "header"})
-        df["ds_path"] = os.path.join([ds_collection_root_path, manifest_key])
-        df["key"] = job_id
-        scribe.concat(df, job_id)
+        df["key"] = manifest_key
+        df["root_path"] = ds_collection_root_path
+        df["match_id"] = job_id
+        scribe.concat(df, manifest_key)
 
     scribe.finish()
 
@@ -114,10 +115,10 @@ def create_subheader_tome_from_fs(
 
 
 def get_manifest_keys_from_glob(ds_root_path, ds_type):
-    paths = glob(os.path.join(ds_root_path, "**", ds_type), recursive=True)
-    paths = [(os.sep).join(path.split(os.sep)[:-1]) for path in paths]
-    paths = set(paths)
-    return paths
+    paths = glob(os.path.join(ds_root_path, "*", "**", ds_type), recursive=True)
+    manifest_keys = [path[len(ds_root_path)+len(os.sep):] for path in paths]
+    manifest_keys = set(manifest_keys)
+    return manifest_keys
 
 
 def fetch_ds_loader_from_fs(root_path, manifest_key, log):
