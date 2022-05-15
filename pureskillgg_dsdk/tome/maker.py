@@ -1,5 +1,4 @@
 import time
-import os
 import structlog
 import pandas as pd
 
@@ -40,7 +39,7 @@ class TomeMaker:
         self._reader_class = reader_class
         self._current_key = None
         self._loaded = False
-        self._key_to_path_hashmap = {}
+        self._key_to_root_path_hashmap = {}
 
     def iterate(self):
         """Get data for the next key"""

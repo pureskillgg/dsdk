@@ -1,6 +1,7 @@
 import os
 import pathlib
 import random
+import warnings
 from typing import List
 import structlog
 import pandas as pd
@@ -78,6 +79,10 @@ class TomeCuratorFs:
         TomeLoader
             Loader for the header tome just created.
         """
+        if path_depth is not None:
+            warnings.warn(
+                "Warning: the keyword path_depth is deprecated. It is not needed."
+            )
         name = tome_name if tome_name is not None else self._default_header_name
         return create_header_tome_from_fs(
             name,

@@ -1,6 +1,5 @@
 import os
 from glob import glob
-import warnings
 import structlog
 
 from ..ds_io import DsReaderFs, GameDsLoader
@@ -16,6 +15,7 @@ def default_tome_name():
     return "header"
 
 
+# pylint: disable=unused-argument
 def create_header_tome_from_fs(
     tome_name=None,
     /,
@@ -27,11 +27,6 @@ def create_header_tome_from_fs(
     log=None,
 ):
     """Make the header tome"""
-    if path_depth is not None:
-        warnings.warn(
-            "Warning: the keyword path_depth is deprecated. It is not needed."
-        )
-
     name = default_tome_name() if tome_name is None else tome_name
     log = (
         log
