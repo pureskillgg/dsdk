@@ -227,3 +227,16 @@ def test_make_tome_complete_behavior_overwrite(tmp_path):
     for data, _ in tomer.iterate():
         tomer.concat(data["round_end"])
     assert tome_id != curator.get_manifest(continued_tome_name)["id"]
+
+
+def test_read_single_match(tmp_path):
+    tmp_path = str(tmp_path)
+    curator = create_curator_instance(tmp_path)
+    create_header_and_subheader(curator)
+
+    loader = curator.get_random_match()
+
+    manifest = loader.manifest
+    data = loader.get_channels()
+
+    assert len(manifest["channels"]) == len(data)
