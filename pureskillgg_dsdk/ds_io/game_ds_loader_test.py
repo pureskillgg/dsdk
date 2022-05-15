@@ -16,8 +16,7 @@ from .normalize_instructions import normalize_instructions
 
 def create_test_game_ds_loader():
     root = "fixtures"
-    job_id = "0F9P4Bte2Z1GLiuOsryY"
-    manifest_key = os.path.join(job_id, "csds")
+    manifest_key = "csds/2022/05/10/0a1effe9-262a-4828-bd4e-8a4265905905/csds"
     reader = DsReaderFs(root_path=root, manifest_key=manifest_key)
     loader = GameDsLoader(reader=reader)
     return loader
