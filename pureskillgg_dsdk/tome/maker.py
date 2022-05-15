@@ -147,9 +147,9 @@ class TomeMaker:
                 action = passthrough
             action()
 
-        self._key_to_root_path_hashmap = self._header_dataframe.set_index("key").to_dict()[
-            "root_path"
-        ]
+        self._key_to_root_path_hashmap = self._header_dataframe.set_index(
+            "key"
+        ).to_dict()["root_path"]
         self._loaded = True
 
     def _copy_header(self):
