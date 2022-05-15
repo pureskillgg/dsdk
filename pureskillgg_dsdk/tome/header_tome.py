@@ -23,12 +23,14 @@ def create_header_tome_from_fs(
     ds_type="csds",
     tome_collection_root_path="tomes",
     ds_collection_root_path="data",
-    path_depth = None,
+    path_depth=None,
     log=None,
 ):
     """Make the header tome"""
     if path_depth is not None:
-        warnings.warn("Warning: the keyword path_depth is deprecated. It is not needed.")
+        warnings.warn(
+            "Warning: the keyword path_depth is deprecated. It is not needed."
+        )
 
     name = default_tome_name() if tome_name is None else tome_name
     log = (
@@ -112,7 +114,7 @@ def create_subheader_tome_from_fs(
 
 
 def get_manifest_keys_from_glob(ds_root_path, ds_type):
-    paths = glob(os.path.join(ds_root_path, "**", ds_type), recursive = True)
+    paths = glob(os.path.join(ds_root_path, "**", ds_type), recursive=True)
     paths = [(os.sep).join(path.split(os.sep)[:-1]) for path in paths]
     paths = set(paths)
     return paths
