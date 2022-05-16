@@ -112,7 +112,10 @@ def create_subheader_tome_from_fs(
 
 
 def get_manifest_key_paths_from_glob(ds_root_path, ds_type):
-    paths = glob(os.path.join(ds_root_path, "*", "**", ds_type), recursive=True)
+    paths = glob(
+        os.path.join(os.path.normpath(ds_root_path), "*", "**", ds_type), recursive=True
+    )
+    paths = [os.path.normpath(path) for path in paths]
     manifest_keys = [path[len(ds_root_path) + len(os.sep) :] for path in paths]
     manifest_keys = set(manifest_keys)
     return manifest_keys
