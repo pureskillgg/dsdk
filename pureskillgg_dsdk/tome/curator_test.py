@@ -36,7 +36,7 @@ def create_header_and_subheader(curator):
     return curator.create_subheader_tome(
         sub_header_name,
         lambda df: df["key"]
-        != "csds/2022/05/10/0a1effe9-262a-4828-bd4e-8a4265905905/csds",
+        != "csds/2022/05/15/63cc7181-07c9-42fd-ade4-4eeb2cf4db6f/csds",
     )
 
 
