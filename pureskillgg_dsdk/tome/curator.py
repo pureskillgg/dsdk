@@ -62,7 +62,7 @@ class TomeCuratorFs:
         )
 
     def create_header_tome(
-        self, tome_name: str = None, /, *, path_depth: int = 4
+        self, tome_name: str = None, /, *, path_depth=None
     ) -> TomeLoader:
         """
         Create the header tome.
