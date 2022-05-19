@@ -7,7 +7,9 @@ def get_tome_manifest_key_fs(path):
 
 
 def get_tome_path_fs(root_path, prefix, tome_name):
-    tome_parent_path = root_path if prefix is None else os.path.join(root_path, prefix)
+    tome_parent_path = (
+        root_path if prefix is None else os.path.join(root_path, *prefix.split("/"))
+    )
     return os.path.join(tome_parent_path, tome_name)
 
 
