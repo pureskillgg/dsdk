@@ -10,7 +10,7 @@ def create_ds_models(**kwargs):
     return DsModels(**kwargs)
 
 
-def create_ds_model(*, model, log):
+def create_ds_model(*, hdbscan=None, model, log):
     model_type = model["type"]
     if model_type == "sagemaker_endpoint":
         return SagemakerEndpoint(model=model, log=log)
@@ -21,7 +21,7 @@ def create_ds_model(*, model, log):
     if model_type == "s3_dataframe_set":
         return S3DataframeSet(model=model, log=log)
     if model_type == "s3_scikit_set":
-        return S3ScikitSet(model=model, log=log)
+        return S3ScikitSet(hdbscan=hdbscan, model=model, log=log)
     if model_type == "s3_scikit":
         return S3Scikit(model=model, log=log)
 
@@ -29,8 +29,9 @@ def create_ds_model(*, model, log):
 
 
 class DsModels:
-    def __init__(self, *, models, log):
+    def __init__(self, *, hdbscan=None, models, log):
         self._models = models
+        self._hdbscan = hdbscan
         self._log = log
 
     def get_ds_model(self, ds_model_name, /):
@@ -38,7 +39,7 @@ class DsModels:
         log = self._log.bind(ds_model=ds_model_name)
         log.info("Selected model version", model_meta=model_data["model_name"])
         log.debug("Model data:", model_data=model_data)
-        return create_ds_model(model=model_data, log=log)
+        return create_ds_model(hdbscan=self._hdbscan, model=model_data, log=log)
 
     def _pick_model_version(self, model_name):
         versions = self._models.get(model_name)
