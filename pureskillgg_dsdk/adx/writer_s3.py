@@ -51,7 +51,7 @@ class AdxDatasetWriterS3:
                 return
 
     def auto_export_revisions(self, client, dataset_id):
-        client.create_event_action(
+        action = client.create_event_action(
             Action={
                 "ExportRevisionToS3": {
                     "RevisionDestination": {
@@ -62,6 +62,8 @@ class AdxDatasetWriterS3:
             },
             Event={"RevisionPublished": {"DataSetId": dataset_id}},
         )
+        self._log.info("Created Action", event_action_id=action["Id"])
+        return action
 
     def _get_key_pattern(self):
         pattern_prefix = self._prefix if self._prefix is not None else ""

@@ -65,18 +65,23 @@ class AdxDataset:
 
     def auto_export_revisions(self):
         self._init()
-        self._writer.auto_export_revisions(self._client, self.dataset_id)
+        return self._writer.auto_export_revisions(self._client, self.dataset_id)
 
     def delete_all_auto_revision_exports(self):
         self._init()
-        res = self._client.list_event_actions()
-        actions = res["EventActions"]
+        paginator = self._client.get_paginator("list_event_actions")
+        pages = paginator.paginate()
+        actions = []
+        for page in pages:
+            actions.extend(page["EventActions"])
+
         for action in actions:
             dataset_id = (
                 action.get("Event", {}).get("RevisionPublished", {}).get("DataSetId")
             )
             if dataset_id == self.dataset_id:
                 self._client.delete_event_action(EventActionId=action["Id"])
+                self._log.info("Deleted Action", event_action_id=action["Id"])
 
     def _init(self):
         if self._dataset is not None:
