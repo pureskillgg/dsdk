@@ -45,9 +45,7 @@ def export_multiple_adx_dataset_revisions_to_s3(
 ):
     writer = AdxDatasetWriterS3(bucket=bucket, prefix=prefix)
     client = AdxDataset(dataset_id=dataset_id, writer=writer)
-    revisions = client.get_revisions(start_date, end_date)
-    for revision in revisions:
-        client.export_revision(revision["Id"], revision.get("Comment"))
+    client.export_revisions(start_date, end_date)
 
 
 def enable_auto_exporting_adx_dataset_revisions_to_s3(

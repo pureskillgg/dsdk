@@ -38,9 +38,23 @@ class AdxDataset:
             if is_date_between(rev["Comment"], start_date, end_date)
         ]
 
-    def export_revision(self, revision_id, comment=None):
+    def export_revisions(self, start_date=None, end_date=None, /):
+        revisions = self.get_revisions(start_date, end_date)
+        self._log.info(
+            "Selected Revisions",
+            start_date=start_date,
+            end_date=end_date,
+            count=len(revisions),
+        )
+        for revision in revisions:
+            self.export_revision(revision["Id"])
+
+    def export_revision(self, revision_id):
         self._init()
-        log = self._log.bind(revision_id=revision_id, comment=comment)
+        revision = self._client.get_revision(
+            DataSetId=self.dataset_id, RevisionId=revision_id
+        )
+        log = self._log.bind(revision_id=revision_id, comment=revision.get("Comment"))
         try:
             log.info("Export Revision: Start")
             self._writer.export_revision(self._client, self.dataset_id, revision_id)
