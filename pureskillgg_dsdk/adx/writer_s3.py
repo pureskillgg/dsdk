@@ -12,6 +12,7 @@ class AdxDatasetWriterS3:
 
     def export_revision(self, client, dataset_id, revision_id):
         res = client.create_job(
+            Type="EXPORT_REVISIONS_TO_S3",
             Details={
                 "ExportRevisionsToS3": {
                     "DataSetId": dataset_id,
@@ -22,13 +23,13 @@ class AdxDatasetWriterS3:
                             "RevisionId": revision_id,
                         },
                     ],
-                }
-            }
+                },
+            },
         )
 
-        job_id = res["id"]
+        job_id = res["Id"]
 
-        client.start_job(job_id)
+        client.start_job(JobId=job_id)
 
         while True:
             time.sleep(2)
@@ -62,4 +63,4 @@ class AdxDatasetWriterS3:
 
     def _get_key_pattern(self):
         pattern_prefix = self._prefix if self._prefix is not None else ""
-        return ("".join([pattern_prefix, "${Asset.Name}"]),)
+        return "".join([pattern_prefix, "${Asset.Name}"])

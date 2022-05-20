@@ -55,9 +55,14 @@ class AdxDataset:
 
     def delete_all_auto_revision_exports(self):
         self._init()
-        raise NotImplementedError(
-            "To delete an auto-export job, select the job you want to delete. Select the Actions menu in the auto-export job destinations section and choose Remove auto-export job destination."
-        )
+        res = self._client.list_event_actions()
+        actions = res["EventActions"]
+        for action in actions:
+            dataset_id = (
+                action.get("Event", {}).get("RevisionPublished", {}).get("DataSetId")
+            )
+            if dataset_id == self.dataset_id:
+                self._client.delete_event_action(EventActionId=action["Id"])
 
     def _init(self):
         if self._dataset is not None:
