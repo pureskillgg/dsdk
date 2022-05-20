@@ -16,7 +16,7 @@ class AdxDatasetWriterFs:
         assets = get_assets(client, dataset_id, revision_id)
         if len(assets) > 500:
             self._log.warn(
-                f"This revision contains {len(assets)} assets and will take a long time to download. Seriously, you are not gonna want to wait for this. Export to S3 instead."
+                f"This revision contains {len(assets)} assets and will take a long time to download. Seriously, you are not gonna want to wait for this. Export to S3 by using export_multiple_adx_dataset_revisions_to_s3 instead."
             )
         for asset in assets:
             self._download_asset(client, asset)
