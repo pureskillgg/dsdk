@@ -42,9 +42,9 @@ class AdxDataset:
         self._init()
         log = self._log.bind(revision_id=revision_id, comment=comment)
         try:
-            log("Export Revision: Start")
+            log.info("Export Revision: Start")
             self._writer.export_revision(self._client, self.dataset_id, revision_id)
-            log("Export Revision: Success")
+            log.info("Export Revision: Success")
         except BaseException as err:
             log.error("Export Revision: Fail", exec_info=err)
             raise
@@ -72,7 +72,7 @@ def is_date_between(date, start_date, end_date):
     start = dateutil.parser.isoparse(start_date if start_date is not None else "1900")
     end = dateutil.parser.isoparse(end_date if end_date is not None else "4000")
     try:
-        middle = dateutil.parser.isoparse(date)
+        middle = dateutil.parser.isoparse(date.split("T")[0])
         return start <= middle < end
     except dateutil.parser.ParserError:
         return False

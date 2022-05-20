@@ -1,6 +1,6 @@
 import os
 import time
-import requests
+import urllib
 
 import structlog
 
@@ -30,9 +30,7 @@ class AdxDatasetWriterFs:
             return
 
         url = get_download_asset_signed_url(client, asset)
-        response = requests.get(url)
-        with open(output_path, "wb") as file:
-            file.write(response.content)
+        urllib.request.urlretrieve(url, output_path)
         self._log.info("Downloaded Asset", path=output_path, asset_name=asset_name)
 
     def _get_output_path(self):

@@ -19,7 +19,7 @@ def download_adx_dataset_revision(
         rev = client.get_latest_revision()
         if rev is None:
             raise RuntimeError("No revisions in dataset")
-        rev_id = rev.Id
+        rev_id = rev["Id"]
 
     client.export_revision(rev_id)
 
@@ -35,7 +35,7 @@ def export_single_adx_dataset_revision_to_s3(
         rev = client.get_latest_revision()
         if rev is None:
             raise RuntimeError("No revisions in dataset")
-        rev_id = rev.Id
+        rev_id = rev["Id"]
 
     client.export_revision(rev_id)
 
