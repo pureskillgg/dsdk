@@ -30,14 +30,13 @@ def export_single_adx_dataset_revision_to_s3(
     writer = AdxDatasetWriterS3(bucket=bucket, prefix=prefix)
     client = AdxDataset(dataset_id=dataset_id, writer=writer)
 
-    rev_id = revision_id
     if revision_id is None:
         rev = client.get_latest_revision()
         if rev is None:
             raise RuntimeError("No revisions in dataset")
-        rev_id = rev["Id"]
+        revision_id= rev["Id"]
 
-    client.export_revision(rev_id)
+    client.export_revision(revision_id)
 
 
 def export_multiple_adx_dataset_revisions_to_s3(
