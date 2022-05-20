@@ -69,8 +69,8 @@ class AdxDataset:
 
 
 def is_date_between(date, start_date, end_date):
-    start = start_date if start_date is not None else dateutil.parser.isoparse("1900")
-    end = end_date if end_date is not None else dateutil.parser.isoparse("4000")
+    start = dateutil.parser.isoparse(start_date if start_date is not None else "1900")
+    end = dateutil.parser.isoparse(end_date if end_date is not None else "4000")
     try:
         middle = dateutil.parser.isoparse(date)
         return start <= middle < end
