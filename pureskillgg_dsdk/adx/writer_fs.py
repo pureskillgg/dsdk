@@ -8,7 +8,9 @@ import structlog
 class AdxDatasetWriterFs:
     def __init__(self, *, root_path, prefix, log=None):
         self._log = log if log is not None else structlog.get_logger()
-        self._log = self._log.bind(client="adx_dataset_writer_fs")
+        self._log = self._log.bind(
+            client="adx_dataset_writer_fs", root_path=root_path, prefix=prefix
+        )
         self._path = root_path
         self._prefix = prefix
 

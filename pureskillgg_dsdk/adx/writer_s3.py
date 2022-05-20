@@ -6,7 +6,9 @@ import structlog
 class AdxDatasetWriterS3:
     def __init__(self, *, bucket, prefix=None, log=None):
         self._log = log if log is not None else structlog.get_logger()
-        self._log = self._log.bind(client="adx_dataset_writer_s3")
+        self._log = self._log.bind(
+            bucket=bucket, prefix=prefix, client="adx_dataset_writer_s3"
+        )
         self._bucket = bucket
         self._prefix = prefix
 
