@@ -42,6 +42,8 @@ class S3ScikitSet(S3Model):
     def _use_model(self, model, data):
         if self._model_type == "hdbscan":
             # pylint: disable=unused-variable
+            if self._hdbscan is None:
+                raise Exception("hdbscan must be injected")
             test_labels, strengths = self._hdbscan.approximate_predict(model, data)
             self._model_data = test_labels
         else:
