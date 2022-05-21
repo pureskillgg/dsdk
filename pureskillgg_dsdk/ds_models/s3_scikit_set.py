@@ -1,13 +1,11 @@
 import pickle
 
-import hdbscan
-
 from .find import find_matching_model
 from .s3_model import S3Model
 
 
 class S3ScikitSet(S3Model):
-    def __init__(self, *, model, log):
+    def __init__(self, *, hdbscan, model, log):
         super().__init__(model, log)
         self._prefix = model["prefix"]
         self._extension = model["extension"]
@@ -15,6 +13,7 @@ class S3ScikitSet(S3Model):
         self._model_type = model["model_type"]
         self._model_selected = False
         self._selected_key = None
+        self._hdbscan = hdbscan
         self._log = log.bind(
             client="s3_scikit_set",
             prefix=self._prefix,
@@ -43,7 +42,9 @@ class S3ScikitSet(S3Model):
     def _use_model(self, model, data):
         if self._model_type == "hdbscan":
             # pylint: disable=unused-variable
-            test_labels, strengths = hdbscan.approximate_predict(model, data)
+            if self._hdbscan is None:
+                raise Exception("hdbscan must be injected")
+            test_labels, strengths = self._hdbscan.approximate_predict(model, data)
             self._model_data = test_labels
         else:
             raise Exception(f"Unknown model_type {self._model_type}")
