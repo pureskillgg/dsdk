@@ -8,7 +8,6 @@ class TomeManifest:
         self,
         *,
         tome_name,
-        path,
         ds_type,
         is_header=False,
         header_tome_name=None,
@@ -16,8 +15,9 @@ class TomeManifest:
         log=None,
     ):
         self._log = log if log is not None else structlog.get_logger()
+        self._tome_name = tome_name
         self._data = create_manifest(
-            tome_name, path, ds_type, is_header, header_tome_name, src_id
+            self._tome_name, ds_type, is_header, header_tome_name, src_id
         )
         self._current_page_start_time = None
         self._current_page_end_time = None
@@ -34,6 +34,8 @@ class TomeManifest:
             "number": page_number,
             "keyset": content_name(page_number, "keyset"),
             "dataframe": content_name(page_number, "dataframe"),
+            "keysetKey": "/".join([self._tome_name, content_name(page_number, "keyset")]),
+            "dataframeKey": "/".join([self._tome_name, content_name(page_number, "dataframe")]),
             "keysetContentType": "application/x-parquet",
             "dataframeContentType": "application/x-parquet",
             "createdAt": now_to_iso(),
@@ -79,7 +81,7 @@ def content_name(page_number, subtype):
     return f"{subtype}_{str(page_number).zfill(5)}"
 
 
-def create_manifest(tome_name, path, ds_type, is_header, header_tome_name, src_id):
+def create_manifest(tome_name, ds_type, is_header, header_tome_name, src_id):
     return {
         "id": str(uuid4()),
         "sourceId": src_id,
@@ -89,7 +91,6 @@ def create_manifest(tome_name, path, ds_type, is_header, header_tome_name, src_i
         "dsType": ds_type,
         "createdAt": now_to_iso(),
         "tome": tome_name,
-        "path": path,
         "isComplete": False,
         "pages": [],
     }

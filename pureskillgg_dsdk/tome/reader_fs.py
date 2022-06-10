@@ -4,7 +4,6 @@ import rapidjson
 from .constants import (
     get_page_key_fs,
     get_tome_manifest_key_fs,
-    get_tome_path_fs,
 )
 
 
@@ -18,12 +17,13 @@ class TomeReaderFs:
             tome_name=tome_name,
         )
 
-        self._path = get_tome_path_fs(root_path, prefix, tome_name)
+        self._path = root_path if prefix is None else os.path.join(root_path, prefix)
+        self._tome_name = tome_name
         self.has_header = has_header
         self.header = None
         if self.has_header:
             self.header = TomeReaderFs(
-                root_path=self._path,
+                root_path=os.path.join(self._path, self._tome_name),
                 tome_name="header",
                 has_header=False,
                 log=self._log,
@@ -42,7 +42,7 @@ class TomeReaderFs:
         return True
 
     def read_manifest(self):
-        key = get_tome_manifest_key_fs(self._path)
+        key = get_tome_manifest_key_fs(self._path, self._tome_name)
         with open(key, "r", encoding="utf-8") as file:
             data = rapidjson.loads(file.read())
         return data

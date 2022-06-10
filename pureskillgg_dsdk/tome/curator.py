@@ -349,7 +349,6 @@ class TomeCuratorFs:
         )
         manifest = TomeManifest(
             tome_name=name,
-            path=writer.path,
             ds_type=self._ds_type,
             header_tome_name=header_name,
             log=self._log,

@@ -38,7 +38,7 @@ def create_header_tome_from_fs(
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
     tome_manifest = TomeManifest(
-        tome_name=name, path=writer.path, ds_type=ds_type, is_header=True
+        tome_name=name, ds_type=ds_type, is_header=True
     )
     scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
@@ -94,7 +94,6 @@ def create_subheader_tome_from_fs(
     writer = TomeWriterFs(root_path=output_path, tome_name=name, log=log)
     manifest = TomeManifest(
         tome_name=name,
-        path=writer.path,
         ds_type=src_loader.manifest["dsType"],
         header_tome_name=src_name,
         is_header=True,
