@@ -34,8 +34,12 @@ class TomeManifest:
             "number": page_number,
             "keyset": content_name(page_number, "keyset"),
             "dataframe": content_name(page_number, "dataframe"),
-            "keysetKey": "/".join([self._tome_name, content_name(page_number, "keyset")]),
-            "dataframeKey": "/".join([self._tome_name, content_name(page_number, "dataframe")]),
+            "keysetKey": "/".join(
+                [self._tome_name, content_name(page_number, "keyset")]
+            ),
+            "dataframeKey": "/".join(
+                [self._tome_name, content_name(page_number, "dataframe")]
+            ),
             "keysetContentType": "application/x-parquet",
             "dataframeContentType": "application/x-parquet",
             "createdAt": now_to_iso(),

@@ -7,7 +7,7 @@ def get_tome_manifest_key_fs(path, tome_name):
 
 
 def get_page_key_fs(path, subtype, page):
-    name = page[subtype+"Key"]
+    name = page[subtype + "Key"]
     return os.path.join(path, name)
 
 

@@ -37,9 +37,7 @@ def create_header_tome_from_fs(
     )
 
     writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
-    tome_manifest = TomeManifest(
-        tome_name=name, ds_type=ds_type, is_header=True
-    )
+    tome_manifest = TomeManifest(tome_name=name, ds_type=ds_type, is_header=True)
     scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
     scribe.start()
