@@ -50,7 +50,7 @@ class TomeWriterFs:
     def _write_dataframe(self, page, dataframe):
         key = self._get_page_key("dataframe", page)
 
-        content_type = page["dataframe"]["ContentType"]
+        content_type = page["dataframe"]["contentType"]
         if content_type != "application/x-parquet":
             raise Exception(f"Unsupported content type {content_type}")
 
@@ -60,7 +60,7 @@ class TomeWriterFs:
     def _write_keyset(self, page, keyset):
         key = self._get_page_key("keyset", page)
 
-        content_type = page["keyset"]["ContentType"]
+        content_type = page["keyset"]["contentType"]
         if content_type != "application/x-parquet":
             raise Exception(f"Unsupported content type {content_type}")
 
