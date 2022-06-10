@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pureskillgg-dsdk"
-version = "0.27.0"
+version = "0.30.0"
 description = "Python Data Science Development Kit."
 authors = ["PureSkill.gg <contact@pureskill.gg>"]
 license = "MIT"
@@ -13,7 +13,6 @@ include = ['poetry.lock']
 python = "^3.9"
 boto3 = "^1.12.32"
 pandas = "^1.2.1"
-hdbscan = "^0.8"
 python-rapidjson = "^1.6"
 pyarrow = "^8.0.0"
 structlog = "^21.5.0"

@@ -79,4 +79,4 @@ class DsReaderFs:
 def add_prefix(key, prefix, /) -> str:
     if prefix is None:
         return key
-    return os.path.join(prefix, key)
+    return os.path.join(*[*prefix.split("/"), key])
