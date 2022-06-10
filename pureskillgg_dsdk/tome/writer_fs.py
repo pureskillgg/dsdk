@@ -7,7 +7,6 @@ import pandas as pd
 from .constants import (
     get_tome_manifest_key_fs,
     get_page_key_fs,
-    get_tome_path_fs,
 )
 
 

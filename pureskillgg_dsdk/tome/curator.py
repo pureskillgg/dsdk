@@ -378,7 +378,7 @@ class TomeCuratorFs:
 
 
 def copy_header_func(header_loader, scribe, log):
-    path = str(pathlib.Path(header_loader.manifest["path"]).parent)
+    path = scribe.path
     create_subheader_tome_from_fs(
         "header",
         src_tome_name=header_loader.manifest.get("tome"),
