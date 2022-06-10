@@ -66,8 +66,7 @@ class TomeManifest:
                 ),
                 "contentType": "application/x-parquet",
             },
-            "createdAt": self._current_page_start_time.isoformat(),
-            "completedAt": now_to_iso(),
+            "createdAt": now_to_iso(),
             "timings": self._calculate_end_page_timings(),
         }
         self._data["pages"].append(page)
