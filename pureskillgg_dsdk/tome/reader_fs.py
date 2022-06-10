@@ -1,10 +1,10 @@
 import os
+from pathlib import Path
 import pandas as pd
 import structlog
 import rapidjson
 from .constants import (
     get_page_key_fs,
-    get_tome_manifest_key_fs,
 )
 
 
@@ -14,32 +14,29 @@ class TomeReaderFs:
         *,
         root_path,
         prefix=None,
-        tome_name,
-        ds_type,
-        is_copied_header=False,
-        log=None,
+        manifest_key,
         has_header=True,
+        log=None,
     ):
         self._log = log if log is not None else structlog.get_logger()
         self._log = self._log.bind(
             client="tome_reader_fs",
             root_path=root_path,
             prefix=prefix,
-            tome_name=tome_name,
+            manifest_key=manifest_key,
         )
 
-        self._path = root_path if prefix is None else os.path.join(root_path, prefix)
-        self._tome_name = tome_name
-        self._ds_type = ds_type
-        self._is_copied_header = is_copied_header
+        self._root_path = root_path
+        self._prefix = prefix
+        self._manifest_key = manifest_key
         self.has_header = has_header
         self.header = None
         if self.has_header:
             self.header = TomeReaderFs(
-                root_path=self._path,
-                tome_name=tome_name,
-                is_copied_header=True,
-                ds_type=self._ds_type,
+                root_path=self._root_path,
+                manifest_key="/".join(
+                    [str(Path(self._manifest_key).parent), "header", "tome"]
+                ),
                 has_header=False,
                 log=self._log,
             )
@@ -57,13 +54,12 @@ class TomeReaderFs:
         return True
 
     def read_manifest(self):
-        key = get_tome_manifest_key_fs(
-            self._path,
-            self._ds_type,
-            self._tome_name,
-            is_copied_header=self._is_copied_header,
+        self._log.info("Read Manifest: Start")
+        file_location = os.path.join(
+            self._root_path, add_prefix(self._manifest_key, self._prefix)
         )
-        with open(key, "r", encoding="utf-8") as file:
+
+        with open(file_location, "r", encoding="utf-8") as file:
             data = rapidjson.loads(file.read())
         return data
 
@@ -99,4 +95,10 @@ class TomeReaderFs:
         return df
 
     def _get_page_key(self, subtype, page):
-        return get_page_key_fs(self._path, subtype, page)
+        return get_page_key_fs(self._root_path, subtype, page)
+
+
+def add_prefix(key, prefix, /) -> str:
+    if prefix is None:
+        return key
+    return os.path.join(*[*prefix.split("/"), key])

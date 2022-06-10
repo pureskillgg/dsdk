@@ -2,9 +2,14 @@ import os
 import structlog
 
 
-def get_tome_manifest_key_fs(path, ds_type, tome_name, is_copied_header=False):
+def get_tome_manifest_key_fs(path, prefix, ds_type, tome_name, is_copied_header=False):
     return os.path.join(
-        path, ds_type, tome_name, "header" if is_copied_header else "", "tome"
+        path,
+        prefix if prefix is not None else "",
+        ds_type,
+        tome_name,
+        "header" if is_copied_header else "",
+        "tome",
     )
 
 

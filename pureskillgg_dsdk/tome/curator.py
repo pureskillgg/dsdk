@@ -215,8 +215,7 @@ class TomeCuratorFs:
         """
         reader = TomeReaderFs(
             root_path=self._tome_collection_root_path,
-            tome_name=tome_name,
-            ds_type=self._ds_type,
+            manifest_key="/".join(["tome", self._ds_type, tome_name, "tome"]),
             log=self._log,
         )
         loader = TomeLoader(reader=reader, log=self._log)
@@ -344,11 +343,8 @@ class TomeCuratorFs:
         existing_tome_loader = self.get_loader(name)
 
         header_loader = self.get_loader(header_name)
-
         writer = TomeWriterFs(
             root_path=self._tome_collection_root_path,
-            tome_name=name,
-            ds_type=self._ds_type,
             log=self._log,
         )
         manifest = TomeManifest(

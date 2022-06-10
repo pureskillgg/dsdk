@@ -44,6 +44,7 @@ class TomeManifest:
                 "keyset": content_name(page_number, "keyset"),
                 "key": "/".join(
                     [
+                        "tome",
                         self._ds_type,
                         self._tome_name,
                         "header" if self._is_copied_header else "",
@@ -56,6 +57,7 @@ class TomeManifest:
                 "dataframe": content_name(page_number, "dataframe"),
                 "key": "/".join(
                     [
+                        "tome",
                         self._ds_type,
                         self._tome_name,
                         "header" if self._is_copied_header else "",
@@ -111,7 +113,9 @@ def content_name(page_number, subtype):
 def create_manifest(
     tome_name, ds_type, is_header, header_tome_name, src_id, is_copied_header=False
 ):
-    key = "/".join([ds_type, tome_name, "header" if is_copied_header else "", "tome"])
+    key = "/".join(
+        ["tome", ds_type, tome_name, "header" if is_copied_header else "", "tome"]
+    )
     return {
         "id": str(uuid4()),
         "key": key,

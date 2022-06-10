@@ -37,10 +37,6 @@ class TomeScribe:
         return self._keyset
 
     @property
-    def path(self):
-        return self._writer.path
-
-    @property
     def tome_name(self):
         return self._writer.tome_name
 
