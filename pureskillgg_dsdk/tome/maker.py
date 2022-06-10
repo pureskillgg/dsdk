@@ -15,7 +15,7 @@ class TomeMaker:
         ds_reading_instructions,
         ds_type,
         tome_loader,
-        copy_header,
+        header_copier,
         ds_collection_root_path,
         behavior_if_complete="pass",
         behavior_if_partial="continue",
@@ -33,7 +33,7 @@ class TomeMaker:
         self._ds_reading_instructions = ds_reading_instructions
         self._header_loader = header_loader
         self._existing_tome_loader = tome_loader
-        self._copy_header_func = copy_header
+        self._header_copier = header_copier
         self._if_complete = behavior_if_complete
         self._if_partial = behavior_if_partial
         self._print_status_frequency = print_status_frequency
@@ -150,4 +150,4 @@ class TomeMaker:
         self._loaded = True
 
     def _copy_header(self):
-        self._copy_header_func(self._header_loader, self._scribe, self._log)
+        self._header_copier.copy()

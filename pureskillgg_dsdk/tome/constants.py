@@ -2,13 +2,14 @@ import os
 import structlog
 
 
-def get_tome_manifest_key_fs(path, tome_name):
-    return os.path.join(path, tome_name, "tome")
+def get_tome_manifest_key_fs(path, ds_type, tome_name, is_copied_header=False):
+    return os.path.join(
+        path, ds_type, tome_name, "header" if is_copied_header else "", "tome"
+    )
 
 
 def get_page_key_fs(path, subtype, page):
-    name = page[subtype]["key"]
-    return os.path.join(path, name)
+    return os.path.join(path, page[subtype]["key"])
 
 
 def filter_ds_reader_logs(_, __, event_dict):

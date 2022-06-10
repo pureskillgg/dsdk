@@ -12,12 +12,20 @@ class TomeManifest:
         is_header=False,
         header_tome_name=None,
         src_id=None,
+        is_copied_header=False,
         log=None,
     ):
         self._log = log if log is not None else structlog.get_logger()
         self._tome_name = tome_name
+        self._ds_type = ds_type
+        self._is_copied_header = is_copied_header
         self._data = create_manifest(
-            self._tome_name, ds_type, is_header, header_tome_name, src_id
+            self._tome_name,
+            self._ds_type,
+            is_header,
+            header_tome_name,
+            src_id,
+            is_copied_header=self._is_copied_header,
         )
         self._current_page_start_time = None
         self._current_page_end_time = None
@@ -34,17 +42,30 @@ class TomeManifest:
             "number": page_number,
             "keyset": {
                 "keyset": content_name(page_number, "keyset"),
-                "key": "/".join([self._tome_name, content_name(page_number, "keyset")]),
+                "key": "/".join(
+                    [
+                        self._ds_type,
+                        self._tome_name,
+                        "header" if self._is_copied_header else "",
+                        content_name(page_number, "keyset"),
+                    ]
+                ),
+                "ContentType": "application/x-parquet",
             },
             "dataframe": {
                 "dataframe": content_name(page_number, "dataframe"),
                 "key": "/".join(
-                    [self._tome_name, content_name(page_number, "dataframe")]
+                    [
+                        self._ds_type,
+                        self._tome_name,
+                        "header" if self._is_copied_header else "",
+                        content_name(page_number, "dataframe"),
+                    ]
                 ),
+                "ContentType": "application/x-parquet",
             },
-            "keysetContentType": "application/x-parquet",
-            "dataframeContentType": "application/x-parquet",
-            "createdAt": now_to_iso(),
+            "createdAt": self._current_page_start_time.isoformat(),
+            "completedAt": now_to_iso(),
             "timings": self._calculate_end_page_timings(),
         }
         self._data["pages"].append(page)
@@ -87,16 +108,20 @@ def content_name(page_number, subtype):
     return f"{subtype}_{str(page_number).zfill(5)}"
 
 
-def create_manifest(tome_name, ds_type, is_header, header_tome_name, src_id):
+def create_manifest(
+    tome_name, ds_type, is_header, header_tome_name, src_id, is_copied_header=False
+):
+    key = "/".join([ds_type, tome_name, "header" if is_copied_header else "", "tome"])
     return {
         "id": str(uuid4()),
+        "key": key,
+        "tome": tome_name,
         "sourceId": src_id,
         "type": "tome",
         "isHeader": is_header,
         "headerTomeName": header_tome_name,
         "dsType": ds_type,
         "createdAt": now_to_iso(),
-        "tome": tome_name,
         "isComplete": False,
         "pages": [],
     }

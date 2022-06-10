@@ -36,7 +36,9 @@ def create_header_tome_from_fs(
         )
     )
 
-    writer = TomeWriterFs(root_path=tome_collection_root_path, tome_name=name, log=log)
+    writer = TomeWriterFs(
+        root_path=tome_collection_root_path, tome_name=name, ds_type=ds_type, log=log
+    )
     tome_manifest = TomeManifest(tome_name=name, ds_type=ds_type, is_header=True)
     scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
@@ -55,7 +57,9 @@ def create_header_tome_from_fs(
 
     scribe.finish()
 
-    reader = TomeReaderFs(root_path=tome_collection_root_path, tome_name=name, log=log)
+    reader = TomeReaderFs(
+        root_path=tome_collection_root_path, tome_name=name, ds_type=ds_type, log=log
+    )
 
     return TomeLoader(reader=reader, log=log)
 
@@ -68,7 +72,8 @@ def create_subheader_tome_from_fs(
     selector=lambda df: [True] * len(df),
     *,
     tome_collection_root_path="tomes",
-    dest_tome_name=None,
+    ds_type="csds",
+    is_copied_header=False,
     preserve_src_id=False,
     log=None,
 ):
@@ -80,22 +85,27 @@ def create_subheader_tome_from_fs(
     src_name = default_tome_name() if src_tome_name is None else src_tome_name
 
     src_reader = TomeReaderFs(
-        root_path=tome_collection_root_path, tome_name=src_name, log=log
+        root_path=tome_collection_root_path,
+        tome_name=src_name,
+        ds_type=ds_type,
+        log=log,
     )
     src_loader = TomeLoader(reader=src_reader, log=log)
 
-    if dest_tome_name is None:
-        output_path = tome_collection_root_path
-    else:
-        output_path = os.path.join(tome_collection_root_path, dest_tome_name)
-
-    writer = TomeWriterFs(root_path=output_path, tome_name=name, log=log)
+    writer = TomeWriterFs(
+        root_path=tome_collection_root_path,
+        tome_name=name,
+        ds_type=ds_type,
+        log=log,
+        is_copied_header=is_copied_header,
+    )
     manifest = TomeManifest(
         tome_name=name,
         ds_type=src_loader.manifest["dsType"],
         header_tome_name=src_name,
         is_header=True,
         src_id=src_loader.manifest["id"] if preserve_src_id else None,
+        is_copied_header=is_copied_header,
     )
     scribe = TomeScribe(writer=writer, manifest=manifest, log=log)
     scribe.start()
@@ -103,7 +113,13 @@ def create_subheader_tome_from_fs(
     scribe.concat(df, list(df["key"]))
     scribe.finish()
 
-    reader = TomeReaderFs(root_path=output_path, tome_name=name, log=log)
+    reader = TomeReaderFs(
+        root_path=tome_collection_root_path,
+        tome_name=name,
+        ds_type=ds_type,
+        log=log,
+        is_copied_header=is_copied_header,
+    )
 
     return TomeLoader(reader=reader, log=log)
 
