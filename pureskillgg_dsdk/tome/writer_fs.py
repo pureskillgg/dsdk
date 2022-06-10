@@ -21,13 +21,13 @@ class TomeWriterFs:
             tome_name=tome_name,
         )
         self.tome_name = tome_name
-        self.path = get_tome_path_fs(root_path, prefix, tome_name)
+        self.path = root_path if prefix is None else os.path.join(root_path, prefix)
         self._parquet_compression = "gzip"
 
     def write_manifest(self, manifest):
         self._ensure_dir()
         self._log.info("Write Manifest: Start")
-        key = get_tome_manifest_key_fs(self.path)
+        key = get_tome_manifest_key_fs(self.path, self.tome_name)
         self._write_json(key, manifest)
 
     def write_page(self, page, dataframe, keyset):
@@ -37,8 +37,9 @@ class TomeWriterFs:
         self._write_keyset(page, keyset)
 
     def _ensure_dir(self):
-        if not os.path.isdir(self.path):
-            os.makedirs(self.path)
+        folder = os.path.join(self.path, self.tome_name)
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
 
     def _write_dataframe(self, page, dataframe):
         key = self._get_page_key("dataframe", page)
