@@ -51,7 +51,7 @@ class TomeManifest:
                         content_name(page_number, "keyset"),
                     ]
                 ),
-                "ContentType": "application/x-parquet",
+                "contentType": "application/x-parquet",
             },
             "dataframe": {
                 "dataframe": content_name(page_number, "dataframe"),
@@ -64,7 +64,7 @@ class TomeManifest:
                         content_name(page_number, "dataframe"),
                     ]
                 ),
-                "ContentType": "application/x-parquet",
+                "contentType": "application/x-parquet",
             },
             "createdAt": self._current_page_start_time.isoformat(),
             "completedAt": now_to_iso(),
