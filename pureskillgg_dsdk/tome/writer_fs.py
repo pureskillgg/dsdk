@@ -30,22 +30,16 @@ class TomeWriterFs:
         file_location = os.path.join(
             self._root_path, add_prefix(manifest["key"], self._prefix)
         )
-        self._ensure_dir(file_location)
+        ensure_dir(file_location)
         self._log.info("Write Manifest: Start")
 
         self._write_json(file_location, manifest)
 
     def write_page(self, page, dataframe, keyset):
-        self._ensure_dir(self._get_page_key("dataframe", page))
+        ensure_dir(self._get_page_key("dataframe", page))
         self._log.info("Write Page Start", page_number=page["number"])
         self._write_dataframe(page, dataframe)
         self._write_keyset(page, keyset)
-
-    # pylint: disable=no-self-use
-    def _ensure_dir(self, file_location):
-        folder = Path(file_location).parent
-        if not os.path.isdir(folder):
-            os.makedirs(folder)
 
     def _write_dataframe(self, page, dataframe):
         key = self._get_page_key("dataframe", page)
@@ -87,3 +81,8 @@ def add_prefix(key, prefix, /) -> str:
     if prefix is None:
         return key
     return os.path.join(*[*prefix.split("/"), key])
+
+def ensure_dir(file_location):
+    folder = Path(file_location).parent
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
