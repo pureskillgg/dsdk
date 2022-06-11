@@ -1,5 +1,4 @@
 import os
-import pathlib
 import random
 import warnings
 from typing import List
@@ -14,6 +13,7 @@ from .manifest import TomeManifest
 from .maker import TomeMaker
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
+from .header_copier_fs import HeaderTomeCopierFs
 
 from ..ds_io import ChannelInstruction, DsReaderFs, GameDsLoader
 
@@ -215,7 +215,7 @@ class TomeCuratorFs:
         """
         reader = TomeReaderFs(
             root_path=self._tome_collection_root_path,
-            tome_name=tome_name,
+            manifest_key="/".join(["tome", self._ds_type, tome_name, "tome"]),
             log=self._log,
         )
         loader = TomeLoader(reader=reader, log=self._log)
@@ -343,13 +343,12 @@ class TomeCuratorFs:
         existing_tome_loader = self.get_loader(name)
 
         header_loader = self.get_loader(header_name)
-
         writer = TomeWriterFs(
-            root_path=self._tome_collection_root_path, tome_name=name, log=self._log
+            root_path=self._tome_collection_root_path,
+            log=self._log,
         )
         manifest = TomeManifest(
             tome_name=name,
-            path=writer.path,
             ds_type=self._ds_type,
             header_tome_name=header_name,
             log=self._log,
@@ -362,6 +361,13 @@ class TomeCuratorFs:
             limit_check_frequency=limit_check_frequency,
             log=self._log,
         )
+        header_copier = HeaderTomeCopierFs(
+            src_tome_name=header_tome_name,
+            tome_collection_root_path=self._tome_collection_root_path,
+            dest_tome_name=name,
+            ds_type=self._ds_type,
+            log=self._log,
+        )
 
         tomer = TomeMaker(
             header_loader=header_loader,
@@ -370,24 +376,12 @@ class TomeCuratorFs:
             ds_type=self._ds_type,
             ds_collection_root_path=self._ds_collection_root_path,
             tome_loader=existing_tome_loader,
-            copy_header=copy_header_func,
+            header_copier=header_copier,
             **kwargs,
             log=self._log,
         )
 
         return tomer
-
-
-def copy_header_func(header_loader, scribe, log):
-    path = str(pathlib.Path(header_loader.manifest["path"]).parent)
-    create_subheader_tome_from_fs(
-        "header",
-        src_tome_name=header_loader.manifest.get("tome"),
-        tome_collection_root_path=path,
-        dest_tome_name=scribe.tome_name,
-        preserve_src_id=True,
-        log=log,
-    )
 
 
 def get_env_option(name, value):

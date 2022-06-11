@@ -1,30 +1,42 @@
+import os
+from pathlib import Path
 import pandas as pd
 import structlog
 import rapidjson
 from .constants import (
-    get_page_key_fs,
-    get_tome_manifest_key_fs,
-    get_tome_path_fs,
+    get_page_path_fs,
 )
 
 
 class TomeReaderFs:
-    def __init__(self, *, root_path, prefix=None, tome_name, log=None, has_header=True):
+    def __init__(
+        self,
+        *,
+        root_path,
+        prefix=None,
+        manifest_key,
+        has_header=True,
+        log=None,
+    ):
         self._log = log if log is not None else structlog.get_logger()
         self._log = self._log.bind(
             client="tome_reader_fs",
             root_path=root_path,
             prefix=prefix,
-            tome_name=tome_name,
+            manifest_key=manifest_key,
         )
 
-        self._path = get_tome_path_fs(root_path, prefix, tome_name)
+        self._root_path = root_path
+        self._prefix = prefix
+        self._manifest_key = manifest_key
         self.has_header = has_header
         self.header = None
         if self.has_header:
             self.header = TomeReaderFs(
-                root_path=self._path,
-                tome_name="header",
+                root_path=self._root_path,
+                manifest_key="/".join(
+                    [str(Path(self._manifest_key).parent), "header", "tome"]
+                ),
                 has_header=False,
                 log=self._log,
             )
@@ -42,8 +54,12 @@ class TomeReaderFs:
         return True
 
     def read_manifest(self):
-        key = get_tome_manifest_key_fs(self._path)
-        with open(key, "r", encoding="utf-8") as file:
+        self._log.info("Read Manifest: Start")
+        file_location = os.path.join(
+            self._root_path, add_prefix(self._manifest_key, self._prefix)
+        )
+
+        with open(file_location, "r", encoding="utf-8") as file:
             data = rapidjson.loads(file.read())
         return data
 
@@ -59,7 +75,7 @@ class TomeReaderFs:
     def read_page_keyset(self, page):
         key = self._get_page_key("keyset", page)
 
-        content_type = page["keysetContentType"]
+        content_type = page["keyset"]["contentType"]
         if content_type != "application/x-parquet":
             raise Exception(f"Unknown content type {content_type}")
 
@@ -70,7 +86,7 @@ class TomeReaderFs:
     def read_page_dataframe(self, page):
         key = self._get_page_key("dataframe", page)
 
-        content_type = page["dataframeContentType"]
+        content_type = page["dataframe"]["contentType"]
         if content_type != "application/x-parquet":
             raise Exception(f"Unsupported content type {content_type}")
 
@@ -79,4 +95,10 @@ class TomeReaderFs:
         return df
 
     def _get_page_key(self, subtype, page):
-        return get_page_key_fs(self._path, subtype, page)
+        return get_page_path_fs(self._root_path, subtype, page)
+
+
+def add_prefix(key, prefix, /) -> str:
+    if prefix is None:
+        return key
+    return os.path.join(*[*prefix.split("/"), key])
