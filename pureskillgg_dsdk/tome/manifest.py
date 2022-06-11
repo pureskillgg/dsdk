@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 import structlog
+from .constants import make_key
 
 # pylint: disable=too-many-arguments
 class TomeManifest:
@@ -42,7 +43,7 @@ class TomeManifest:
             "number": page_number,
             "keyset": {
                 "keyset": content_name(page_number, "keyset"),
-                "key": "/".join(
+                "key": make_key(
                     [
                         "tome",
                         self._ds_type,
@@ -55,7 +56,7 @@ class TomeManifest:
             },
             "dataframe": {
                 "dataframe": content_name(page_number, "dataframe"),
-                "key": "/".join(
+                "key": make_key(
                     [
                         "tome",
                         self._ds_type,
