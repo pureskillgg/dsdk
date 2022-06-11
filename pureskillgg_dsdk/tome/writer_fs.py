@@ -5,7 +5,7 @@ import structlog
 import rapidjson
 import pandas as pd
 
-from .constants import get_page_key_fs
+from .constants import get_page_path_fs
 
 
 class TomeWriterFs:
@@ -65,7 +65,7 @@ class TomeWriterFs:
         self._write_parquet(key, df)
 
     def _get_page_key(self, subtype, page):
-        return get_page_key_fs(self._root_path, subtype, page)
+        return get_page_path_fs(self._root_path, subtype, page)
 
     def _write_parquet(self, key: str, df: pd.DataFrame) -> None:
         self._log.debug("Write parquet", key=key)

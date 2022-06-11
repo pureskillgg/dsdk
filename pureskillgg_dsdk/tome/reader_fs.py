@@ -4,7 +4,7 @@ import pandas as pd
 import structlog
 import rapidjson
 from .constants import (
-    get_page_key_fs,
+    get_page_path_fs,
 )
 
 
@@ -95,7 +95,7 @@ class TomeReaderFs:
         return df
 
     def _get_page_key(self, subtype, page):
-        return get_page_key_fs(self._root_path, subtype, page)
+        return get_page_path_fs(self._root_path, subtype, page)
 
 
 def add_prefix(key, prefix, /) -> str:
