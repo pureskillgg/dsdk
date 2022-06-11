@@ -82,6 +82,7 @@ def add_prefix(key, prefix, /) -> str:
         return key
     return os.path.join(*[*prefix.split("/"), key])
 
+
 def ensure_dir(file_location):
     folder = Path(file_location).parent
     if not os.path.isdir(folder):
