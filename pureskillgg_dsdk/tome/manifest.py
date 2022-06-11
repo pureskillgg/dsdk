@@ -113,7 +113,7 @@ def content_name(page_number, subtype):
 def create_manifest(
     tome_name, ds_type, is_header, header_tome_name, src_id, is_copied_header=False
 ):
-    key = "/".join(
+    key = make_key(
         ["tome", ds_type, tome_name, "header" if is_copied_header else "", "tome"]
     )
     return {
