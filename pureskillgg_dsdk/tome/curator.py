@@ -362,7 +362,7 @@ class TomeCuratorFs:
             log=self._log,
         )
         header_copier = HeaderTomeCopierFs(
-            src_tome_name=header_tome_name,
+            src_tome_name=header_name,
             tome_collection_root_path=self._tome_collection_root_path,
             dest_tome_name=name,
             ds_type=self._ds_type,
