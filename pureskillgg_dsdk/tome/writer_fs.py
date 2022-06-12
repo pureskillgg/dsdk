@@ -71,7 +71,6 @@ class TomeWriterFs:
         self._log.debug("Write parquet", key=key)
         df.to_parquet(key, compression=self._parquet_compression)
 
-    # pylint: disable=no-self-use
     def _write_json(self, key, data):
         with open(key, "w", encoding="utf-8") as file:
             rapidjson.dump(data, file)

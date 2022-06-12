@@ -63,7 +63,6 @@ class TomeReaderFs:
             data = rapidjson.loads(file.read())
         return data
 
-    # pylint: disable=no-self-use
     def read_metadata(self):
         return {}
 

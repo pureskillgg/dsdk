@@ -3,7 +3,6 @@
 disable=
     line-too-long,
     too-many-instance-attributes,
-    bad-continuation,
     missing-class-docstring,
     missing-function-docstring,
     missing-module-docstring,

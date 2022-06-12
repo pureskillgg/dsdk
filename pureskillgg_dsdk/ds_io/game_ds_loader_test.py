@@ -1,7 +1,6 @@
 # pylint: disable=missing-docstring
 # pylint: disable=unused-import
 # pylint: disable=unused-argument
-# pylint: disable=no-self-use
 # pylint: disable=protected-access
 
 from glob import glob
