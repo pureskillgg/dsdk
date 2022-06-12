@@ -21,15 +21,15 @@ Installation
 ------------
 
 This package is registered on the `Python Package Index (PyPI)`_
-as pureskillgg_dsdk_.
+as pureskillgg-dsdk_.
 
 Install it with
 
 ::
 
-    $ poetry add pureskillgg_dsdk
+    $ poetry add pureskillgg-dsdk
 
-.. _pureskillgg_dsdk: https://pypi.python.org/pypi/pureskillgg-dsdk
+.. _pureskillgg-dsdk: https://pypi.python.org/pypi/pureskillgg-dsdk
 .. _Python Package Index (PyPI): https://pypi.python.org/
 
 Development and Testing
