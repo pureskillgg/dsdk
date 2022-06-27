@@ -54,7 +54,7 @@ def create_header_tome_from_fs(
         scribe.concat(df, ds_loader.manifest["key"])
         if update_frequency != 0 and counter % update_frequency == 0 and counter > 0:
             log.info(
-                "Create Header Update:", percent_done=100 * counter / len(key_paths)
+                "Create Header Update", percent_done=100 * counter / len(key_paths)
             )
 
     scribe.finish()
