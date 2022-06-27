@@ -16,6 +16,7 @@ def default_tome_name():
 
 
 # pylint: disable=unused-argument
+# pylint: disable=too-many-locals
 def create_header_tome_from_fs(
     tome_name=None,
     /,
@@ -24,6 +25,7 @@ def create_header_tome_from_fs(
     tome_collection_root_path="tomes",
     ds_collection_root_path="data",
     path_depth=None,
+    update_frequency=0,
     log=None,
 ):
     """Make the header tome"""
@@ -41,10 +43,8 @@ def create_header_tome_from_fs(
     scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
     scribe.start()
-
-    for manifest_key_path in get_manifest_key_paths_from_glob(
-        ds_collection_root_path, ds_type
-    ):
+    key_paths = get_manifest_key_paths_from_glob(ds_collection_root_path, ds_type)
+    for counter, manifest_key_path in enumerate(key_paths):
         ds_loader = fetch_ds_loader_from_fs(
             ds_collection_root_path, manifest_key_path, log
         )
@@ -52,6 +52,10 @@ def create_header_tome_from_fs(
         df["key"] = ds_loader.manifest["key"]
         df["match_id"] = ds_loader.manifest["id"]
         scribe.concat(df, ds_loader.manifest["key"])
+        if update_frequency != 0 and counter % update_frequency == 0 and counter > 0:
+            log.info(
+                "Create Header Update", percent_done=100 * counter / len(key_paths)
+            )
 
     scribe.finish()
 
