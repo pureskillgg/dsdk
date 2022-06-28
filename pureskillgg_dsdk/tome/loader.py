@@ -35,7 +35,6 @@ class TomeLoader:
             return False
         return self._manifest.get("isComplete", False)
 
-
     @property
     def manifest(self):
         """Tome manifest"""
