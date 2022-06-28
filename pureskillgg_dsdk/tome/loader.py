@@ -29,6 +29,13 @@ class TomeLoader:
         return self._reader.exists
 
     @property
+    def is_complete(self):
+        """If the tome is complete"""
+        if not self._reader.exists:
+            return False
+        return self.manifest.get("isComplete", False)
+
+    @property
     def manifest(self):
         """Tome manifest"""
         self._load()
