@@ -33,7 +33,7 @@ class TomeLoader:
         """If the tome is complete"""
         if not self._reader.exists:
             return False
-        return self._manifest.get("isComplete", False)
+        return self.manifest.get("isComplete", False)
 
     @property
     def manifest(self):
