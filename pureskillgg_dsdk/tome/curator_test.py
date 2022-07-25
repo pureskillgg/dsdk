@@ -11,10 +11,10 @@ from .curator import TomeCuratorFs
 # pylint: disable=invalid-name
 ds_collection_root_path = "fixtures"
 ds_type = "csds"
-default_header_name = "header_tome"
-sub_header_name = "only_good_headers"
-new_tome_name = "round_end"
-continued_tome_name = "round_end_continued"
+default_header_name = "header_tome.1234-56-78,1234-56-78"
+sub_header_name = "only_good_headers.1234-56-78,1234-56-78"
+new_tome_name = "round_end.1234-56-78,1234-56-78"
+continued_tome_name = "round_end_continued.1234-56-78,1234-56-78"
 pd.DataFrame()
 
 
@@ -88,8 +88,8 @@ def test_make_tome(tmp_path):
 
 
 def test_make_tome_with_options(tmp_path):
-    new_tome_name_size_limited = "round_end_size_limited"
-    new_tome_name_row_limited = "round_end_row_limited"
+    new_tome_name_size_limited = "round_end_size_limited.1234-56-78,1234-56-78"
+    new_tome_name_row_limited = "round_end_row_limited.1234-56-78,1234-56-78"
     curator = create_curator_instance(tmp_path)
     create_header_and_subheader(curator)
     tomer = curator.make_tome(
