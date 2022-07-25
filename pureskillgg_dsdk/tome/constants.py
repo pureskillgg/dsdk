@@ -1,4 +1,6 @@
 import os
+import re
+import warnings
 import structlog
 
 
@@ -20,3 +22,12 @@ def valid_key_part(part):
 
 def make_key(my_list):
     return "/".join([arg for arg in my_list if valid_key_part(arg)])
+
+
+def warn_if_invalid_tome_name(tome_name):
+    if not re.match(r"\S+.\d{4}-\d{2}-\d{2},\d{4}-\d{2}-\d{2}[.\S]*", tome_name):
+        warnings.warn(
+            f"Header name of {tome_name} does not match convention of"
+            f" tome_name.start-date,end-date[.comment] where dates "
+            f"are formatted liky yyyy-mm-dd"
+        )

@@ -8,7 +8,7 @@ from .scribe import TomeScribe
 from .manifest import TomeManifest
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
-from .constants import filter_ds_reader_logs
+from .constants import filter_ds_reader_logs, warn_if_invalid_tome_name
 
 
 def default_tome_name():
@@ -30,6 +30,7 @@ def create_header_tome_from_fs(
 ):
     """Make the header tome"""
     name = default_tome_name() if tome_name is None else tome_name
+    warn_if_invalid_tome_name(name)
     log = (
         log
         if log is not None
@@ -85,6 +86,7 @@ def create_subheader_tome_from_fs(
     selector is passed to filter out rows from the header
     by doing df = df.loc[selector]
     """
+    warn_if_invalid_tome_name(name)
     log = log if log is not None else structlog.get_logger()
     src_name = default_tome_name() if src_tome_name is None else src_tome_name
 

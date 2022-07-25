@@ -14,6 +14,7 @@ from .maker import TomeMaker
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
 from .header_copier_fs import HeaderTomeCopierFs
+from .constants import warn_if_invalid_tome_name
 
 from ..ds_io import ChannelInstruction, DsReaderFs, GameDsLoader
 
@@ -84,6 +85,7 @@ class TomeCuratorFs:
                 "Warning: the keyword path_depth is deprecated. It is not needed."
             )
         name = tome_name if tome_name is not None else self._default_header_name
+        warn_if_invalid_tome_name(name)
         return create_header_tome_from_fs(
             name,
             ds_type=self._ds_type,
@@ -120,6 +122,7 @@ class TomeCuratorFs:
         TomeLoader
             Loader for the header tome just created.
         """
+        warn_if_invalid_tome_name(tome_name)
         src_name = (
             src_tome_name if src_tome_name is not None else self._default_header_name
         )
@@ -333,6 +336,7 @@ class TomeCuratorFs:
         TomeMaker
             The TomeMaker instance to make a tome.
         """
+        warn_if_invalid_tome_name(tome_name)
         header_name = (
             header_tome_name
             if header_tome_name is not None
