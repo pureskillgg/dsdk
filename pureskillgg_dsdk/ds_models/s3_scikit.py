@@ -34,6 +34,9 @@ class S3Scikit(S3Model):
         if self._model_type == "MiniBatchKMeans":
             labels = self._loaded_model.predict(dataframe)
             return labels
+        elif self._model_type == "SGDClassifier":
+            labels = self._loaded_model.predict_proba(dataframe)
+            return labels
         raise Exception(f"Unknown model_type {self._model_type}")
 
     def invoke(self, dataframe):
