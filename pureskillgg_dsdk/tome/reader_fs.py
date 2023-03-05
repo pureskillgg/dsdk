@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import pandas as pd
+from fastparquet import ParquetFile
 import structlog
 import rapidjson
 from .constants import (
@@ -79,7 +80,7 @@ class TomeReaderFs:
             raise Exception(f"Unknown content type {content_type}")
 
         self._log.info("Read keyset: Start", page_number=page["number"])
-        df = pd.read_parquet(key)
+        df = ParquetFile(key).to_pandas()
         return list(df.iloc[:, 0])
 
     def read_page_dataframe(self, page):
@@ -90,7 +91,7 @@ class TomeReaderFs:
             raise Exception(f"Unsupported content type {content_type}")
 
         self._log.info("Read Dataframe: Start", page_number=page["number"])
-        df = pd.read_parquet(key)
+        df = ParquetFile(key).to_pandas()
         return df
 
     def _get_page_key(self, subtype, page):
