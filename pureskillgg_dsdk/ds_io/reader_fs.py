@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Union
 import structlog
 import rapidjson
 import pandas as pd
+from fastparquet import ParquetFile
 from .handle_value_error import handle_value_error
 
 
@@ -51,7 +52,8 @@ class DsReaderFs:
         )
         file_location = self._get_file_location(channel)
         try:
-            df = pd.read_parquet(file_location, columns=columns)
+            pq_file = ParquetFile(file_location)
+            df = pq_file.to_pandas(columns=columns)
         except ValueError as value_error:
             df = handle_value_error(value_error, channel)
 
