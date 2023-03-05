@@ -16,6 +16,7 @@ python-rapidjson = "^1.6"
 pyarrow = "^8.0.0"
 structlog = "^22.1.0"
 fastparquet = "^2023.2.0"
+s3fs = "^2023.3.0"
 
 [tool.poetry.dev-dependencies]
 black = "^22.3.0"

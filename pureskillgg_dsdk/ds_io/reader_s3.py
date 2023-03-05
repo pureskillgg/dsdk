@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Union
 import structlog
 import rapidjson
 import boto3
+import s3fs
 import pandas as pd
 from fastparquet import ParquetFile
 from .handle_value_error import handle_value_error
@@ -24,6 +25,7 @@ class DsReaderS3:
         self._bucket = bucket
         self._prefix = prefix
         self._s3_client = boto3.client("s3")
+        self._s3_fs = s3fs.S3FileSystem()
         self._manifest_key = manifest_key
 
     def read_manifest(self) -> Dict:
@@ -53,7 +55,7 @@ class DsReaderS3:
             # UPSTREAM: Flaky, will sometimes throw FileNotFoundError on s3 objects
             # https://github.com/apache/arrow/issues/2192#issuecomment-569813829
             try:
-                pq_file = ParquetFile(self._get_channel_location(channel))
+                pq_file = ParquetFile(self._get_channel_location(channel), open_with=self._s3_fs.open)
                 df = pq_file.to_pandas(columns=columns)
             except FileNotFoundError:
                 key = self._get_channel_key(channel)
