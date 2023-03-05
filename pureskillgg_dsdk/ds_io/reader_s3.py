@@ -6,6 +6,7 @@ import structlog
 import rapidjson
 import boto3
 import pandas as pd
+from fastparquet import ParquetFile
 from .handle_value_error import handle_value_error
 
 
@@ -52,9 +53,8 @@ class DsReaderS3:
             # UPSTREAM: Flaky, will sometimes throw FileNotFoundError on s3 objects
             # https://github.com/apache/arrow/issues/2192#issuecomment-569813829
             try:
-                df = pd.read_parquet(
-                    self._get_channel_location(channel), columns=columns
-                )
+                pq_file = ParquetFile(self._get_channel_location(channel))
+                df = pq_file.to_pandas(columns=columns)
             except FileNotFoundError:
                 key = self._get_channel_key(channel)
                 obj = self._s3_client.get_object(Bucket=self._bucket, Key=key)
