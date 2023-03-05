@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+from typing import Tuple
 import pandas as pd
+from fastparquet import ParquetFile
 import structlog
 import rapidjson
 from .constants import (
@@ -42,7 +44,7 @@ class TomeReaderFs:
             )
 
     @property
-    def exists(self):
+    def exists(self) -> bool:
         """If the tome exists"""
         try:
             self.read_manifest()
@@ -53,7 +55,7 @@ class TomeReaderFs:
             raise
         return True
 
-    def read_manifest(self):
+    def read_manifest(self) -> dict:
         self._log.info("Read Manifest: Start")
         file_location = os.path.join(
             self._root_path, add_prefix(self._manifest_key, self._prefix)
@@ -63,15 +65,15 @@ class TomeReaderFs:
             data = rapidjson.loads(file.read())
         return data
 
-    def read_metadata(self):
+    def read_metadata(self) -> dict:
         return {}
 
-    def read_page(self, page):
+    def read_page(self, page) -> Tuple(pd.DataFrame, list):
         dataframe = self.read_page_dataframe(page)
         keyset = self.read_page_keyset(page)
         return dataframe, keyset
 
-    def read_page_keyset(self, page):
+    def read_page_keyset(self, page) -> list:
         key = self._get_page_key("keyset", page)
 
         content_type = page["keyset"]["contentType"]
@@ -79,10 +81,10 @@ class TomeReaderFs:
             raise Exception(f"Unknown content type {content_type}")
 
         self._log.info("Read keyset: Start", page_number=page["number"])
-        df = pd.read_parquet(key)
+        df = ParquetFile(key).to_pandas()
         return list(df.iloc[:, 0])
 
-    def read_page_dataframe(self, page):
+    def read_page_dataframe(self, page) -> pd.DataFrame:
         key = self._get_page_key("dataframe", page)
 
         content_type = page["dataframe"]["contentType"]
@@ -90,7 +92,7 @@ class TomeReaderFs:
             raise Exception(f"Unsupported content type {content_type}")
 
         self._log.info("Read Dataframe: Start", page_number=page["number"])
-        df = pd.read_parquet(key)
+        df = ParquetFile(key).to_pandas()
         return df
 
     def _get_page_key(self, subtype, page):
