@@ -8,6 +8,7 @@ disable=
     missing-module-docstring,
     too-few-public-methods,
     duplicate-code,
+    broad-exception-raised,
 
 [TYPECHECK]
 ignored-modules = rapidjson
