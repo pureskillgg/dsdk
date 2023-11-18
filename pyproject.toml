@@ -13,7 +13,7 @@ python = "^3.9"
 boto3 = "^1.12.32"
 pandas = "^1.2.1"
 python-rapidjson = "^1.6"
-pyarrow = "^8.0.0"
+pyarrow = "14.0.*"
 structlog = "^22.1.0"
 
 [tool.poetry.dev-dependencies]
