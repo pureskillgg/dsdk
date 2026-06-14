@@ -7,7 +7,6 @@ import pytest
 import pandas as pd
 from .curator import TomeCuratorFs
 
-
 # pylint: disable=invalid-name
 ds_collection_root_path = "fixtures"
 ds_type = "csds"

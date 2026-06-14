@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.0.0 / 2026-06-14
+
+- Migrate to Python 3.11+ (CI test matrix 3.11-3.14).
+- Update the data stack: pandas 2.3, numpy 2, pyarrow 16-24, boto3 1.43, structlog 26, python-rapidjson 1.23.
+- Add `pureskillgg_dsdk.sqs`, an async SQS consumer (built on aiobotocore) that replaces the abandoned `loafer` package in the worker services.
+- Update dev tooling: black 26, pylint 4, pytest 9, pytest-cov 7; remove pytest-runner.
+
+## 2.0.0 / 2024-04-01
+
+- Upgrade to pandas 2 and a newer boto3.
+
+## 1.3.1 / 2024-03-31
+
+- Downgrade boto3.
+
+## 1.3.0 / 2024-03-31
+
+- Update dependencies ahead of the pandas 2 upgrade.
+
 ## 1.2.0 / 2023-11-17
 
 - Update pyarrow from 8.x to 14.x so that the [wheels are there](https://arrow.apache.org/install/)

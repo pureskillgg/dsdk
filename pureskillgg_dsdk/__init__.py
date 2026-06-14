@@ -1,6 +1,7 @@
 """
 Python Data Science Development Kit.
 """
+
 from .ds_models import create_ds_models
 from .ds_io.reader_s3 import DsReaderS3
 from .ds_io.reader_fs import DsReaderFs
@@ -13,4 +14,10 @@ from .adx import (
     export_multiple_adx_dataset_revisions_to_s3,
     enable_auto_exporting_adx_dataset_revisions_to_s3,
     disable_auto_exporting_adx_dataset_revisions_to_s3,
+)
+from .sqs import (
+    SqsConsumer,
+    DeleteMessage,
+    AbstractMessageTranslator,
+    SqsJsonMessageTranslator,
 )

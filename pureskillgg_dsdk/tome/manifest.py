@@ -3,6 +3,7 @@ from uuid import uuid4
 import structlog
 from .constants import make_key
 
+
 # pylint: disable=too-many-arguments
 class TomeManifest:
     def __init__(
