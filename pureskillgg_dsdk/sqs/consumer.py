@@ -134,6 +134,10 @@ class SqsConsumer:
             finally:
                 for worker in workers:
                     worker.cancel()
+                # Wait for the cancelled workers to fully unwind before the
+                # `async with` closes the shared client -- otherwise their
+                # in-flight calls get torn down ("Task was destroyed" noise).
+                await asyncio.gather(*workers, return_exceptions=True)
                 self._log.info("SQS Consumer: Stop")
 
     async def _resolve_queue_url(self, client):

@@ -230,7 +230,8 @@ def test_invalid_json_body_routed_to_error_handler():
         return True
 
     async def error_handler(exc_info, message):  # pylint: disable=unused-argument
-        errors.append(message["MessageId"])
+        # The raw Body must still be present for poison-message debugging.
+        errors.append(message.get("Body"))
         return True  # ack the poison message
 
     message = {"MessageId": "1", "ReceiptHandle": "rh-1", "Body": "not-json{"}
@@ -243,7 +244,7 @@ def test_invalid_json_body_routed_to_error_handler():
         client_factory=factory_for(fake),
     )
     run_until(consumer, lambda: len(fake.deleted) == 1)
-    assert errors == ["1"]
+    assert errors == ["not-json{"]
     assert fake.deleted == ["rh-1"]
 
 
@@ -351,6 +352,8 @@ def test_json_translator_unit():
     assert result["content"] == {"a": 1}
     assert result["metadata"]["MessageId"] == "1"
     assert "Body" not in result["metadata"]
+    # The translator must not mutate its input.
+    assert "Body" in message
 
 
 def test_stop_exits_cleanly():
