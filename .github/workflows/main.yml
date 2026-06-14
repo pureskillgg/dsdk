@@ -10,13 +10,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      matrix:
+        python_version: ['3.11', '3.12', '3.13', '3.14']
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
           lfs: true
       - name: Setup
         uses: ./.github/actions/setup
+        with:
+          python_version: ${{ matrix.python_version }}
       - name: Test
         run: make test
   lint:
@@ -24,7 +29,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       - name: Setup
         uses: ./.github/actions/setup
       - name: Lint
@@ -34,7 +39,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       - name: Setup
         uses: ./.github/actions/setup
       - name: Build

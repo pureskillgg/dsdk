@@ -9,6 +9,8 @@ disable=
     too-few-public-methods,
     duplicate-code,
     broad-exception-raised,
+    too-many-arguments,
+    too-many-positional-arguments,
 
 [TYPECHECK]
 ignored-modules = rapidjson
