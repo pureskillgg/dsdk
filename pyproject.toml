@@ -17,9 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# For the s3_xgboost ds-model type. Not a base dependency so consumers that
-# never load models (e.g. Lambda pipelines) don't ship the xgboost wheel.
-# scikit-learn is required by xgboost's XGBClassifier sklearn API.
+# For s3_xgboost; optional so model-free consumers skip the wheel. XGBClassifier needs sklearn.
 xgboost = ["xgboost>=3.2,<4.0.0", "scikit-learn>=1.9,<2.0.0"]
 
 [project.urls]
