@@ -16,6 +16,12 @@ dependencies = [
     "pandas[performance,plot,output-formatting,computation,parquet,fss,aws]>=2.3.0,<3.0.0",
 ]
 
+[project.optional-dependencies]
+# For the s3_xgboost ds-model type. Not a base dependency so consumers that
+# never load models (e.g. Lambda pipelines) don't ship the xgboost wheel.
+# scikit-learn is required by xgboost's XGBClassifier sklearn API.
+xgboost = ["xgboost>=3.2,<4.0.0", "scikit-learn>=1.9,<2.0.0"]
+
 [project.urls]
 Homepage = "https://github.com/pureskillgg/dsdk"
 Repository = "https://github.com/pureskillgg/dsdk"
@@ -27,6 +33,8 @@ dev = [
     "pytest>=9.0.0,<10.0.0",
     "pytest-cov>=7.0.0,<8.0.0",
     "pytest-watch>=4.2.0,<5.0.0",
+    "xgboost>=3.2,<4.0.0",
+    "scikit-learn>=1.9,<2.0.0",
 ]
 
 [build-system]

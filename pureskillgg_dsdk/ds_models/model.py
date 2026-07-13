@@ -11,7 +11,7 @@ def create_ds_models(**kwargs):
     return DsModels(**kwargs)
 
 
-def create_ds_model(*, hdbscan=None, xgboost=None, model, log):
+def create_ds_model(*, hdbscan=None, model, log):
     # pylint: disable=too-many-return-statements
     model_type = model["type"]
     if model_type == "sagemaker_endpoint":
@@ -27,16 +27,15 @@ def create_ds_model(*, hdbscan=None, xgboost=None, model, log):
     if model_type == "s3_scikit":
         return S3Scikit(model=model, log=log)
     if model_type == "s3_xgboost":
-        return S3Xgboost(xgboost=xgboost, model=model, log=log)
+        return S3Xgboost(model=model, log=log)
 
     raise Exception(f"Unknown model type: {model_type}")
 
 
 class DsModels:
-    def __init__(self, *, hdbscan=None, xgboost=None, models, log):
+    def __init__(self, *, hdbscan=None, models, log):
         self._models = models
         self._hdbscan = hdbscan
-        self._xgboost = xgboost
         self._log = log
 
     def get_ds_model(self, ds_model_name, /):
@@ -44,12 +43,7 @@ class DsModels:
         log = self._log.bind(ds_model=ds_model_name)
         log.info("Selected model version", model_meta=model_data["model_name"])
         log.debug("Model data:", model_data=model_data)
-        return create_ds_model(
-            hdbscan=self._hdbscan,
-            xgboost=self._xgboost,
-            model=model_data,
-            log=log,
-        )
+        return create_ds_model(hdbscan=self._hdbscan, model=model_data, log=log)
 
     def _pick_model_version(self, model_name):
         versions = self._models.get(model_name)

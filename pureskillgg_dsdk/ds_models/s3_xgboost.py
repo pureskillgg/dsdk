@@ -2,11 +2,10 @@ from .s3_model import S3Model
 
 
 class S3Xgboost(S3Model):
-    def __init__(self, *, xgboost, model, log):
+    def __init__(self, *, model, log):
         super().__init__(model, log)
         self._model_type = model["model_type"]
         self._key = model["key"]
-        self._xgboost = xgboost
         self._loaded_model = None
         self._log = log.bind(
             client="s3_xgboost",
@@ -22,12 +21,14 @@ class S3Xgboost(S3Model):
         raise Exception(f"Unknown res_type {self._res_type}")
 
     def _read_json_model(self):
-        if self._xgboost is None:
-            raise Exception("xgboost must be injected")
+        # Requires the xgboost extra: pureskillgg-dsdk[xgboost]
+        # pylint: disable=import-outside-toplevel
+        import xgboost
+
         body = self._s3_client.get_object(Bucket=self._bucket, Key=self._key)[
             "Body"
         ].read()
-        model = self._xgboost.XGBClassifier()
+        model = xgboost.XGBClassifier()
         model.load_model(bytearray(body))
         return model
 
