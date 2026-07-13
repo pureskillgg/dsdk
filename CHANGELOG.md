@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.1.0 / 2026-07-13
+
+### Added
+
+- New `s3_xgboost` ds-model type: loads an XGBoost model saved with
+  `save_model("*.json")` from S3 (`res_type: application/json`) and invokes
+  `predict_proba` (`model_type: XGBClassifier`). The `xgboost` module is
+  injected via `create_ds_models(xgboost=...)`, mirroring `hdbscan`, so the
+  package gains no xgboost dependency.
+
 ## 3.0.1 / 2026-06-14
 
 ### Fixed
