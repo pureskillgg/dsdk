@@ -21,9 +21,13 @@ class S3Xgboost(S3Model):
         raise Exception(f"Unknown res_type {self._res_type}")
 
     def _read_json_model(self):
-        # Requires the xgboost extra: pureskillgg-dsdk[xgboost]
         # pylint: disable=import-outside-toplevel
-        import xgboost
+        try:
+            import xgboost
+        except ImportError as error:
+            raise Exception(
+                "xgboost is not installed: install the pureskillgg-dsdk[xgboost] extra"
+            ) from error
 
         body = self._s3_client.get_object(Bucket=self._bucket, Key=self._key)[
             "Body"
