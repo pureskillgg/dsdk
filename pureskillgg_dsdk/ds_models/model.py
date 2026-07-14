@@ -4,6 +4,7 @@ from .s3_dataframe import S3Dataframe
 from .s3_dataframe_set import S3DataframeSet
 from .s3_scikit import S3Scikit
 from .s3_scikit_set import S3ScikitSet
+from .s3_xgboost import S3Xgboost
 
 
 def create_ds_models(**kwargs):
@@ -11,6 +12,7 @@ def create_ds_models(**kwargs):
 
 
 def create_ds_model(*, hdbscan=None, model, log):
+    # pylint: disable=too-many-return-statements
     model_type = model["type"]
     if model_type == "sagemaker_endpoint":
         return SagemakerEndpoint(model=model, log=log)
@@ -24,6 +26,8 @@ def create_ds_model(*, hdbscan=None, model, log):
         return S3ScikitSet(hdbscan=hdbscan, model=model, log=log)
     if model_type == "s3_scikit":
         return S3Scikit(model=model, log=log)
+    if model_type == "s3_xgboost":
+        return S3Xgboost(model=model, log=log)
 
     raise Exception(f"Unknown model type: {model_type}")
 
