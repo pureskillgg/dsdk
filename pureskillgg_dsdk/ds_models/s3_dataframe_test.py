@@ -1,4 +1,5 @@
 # pylint: disable=missing-docstring,invalid-name,protected-access
+# pylint: disable=no-value-for-parameter
 
 import io
 import os
