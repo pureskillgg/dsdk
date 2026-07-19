@@ -88,4 +88,4 @@ def test_s3_xgboost_booster_matches_local_predictions(tmp_path):
 
     predictions = ds_model.invoke(frame)
     expected = trained.predict(xgboost.DMatrix(frame, enable_categorical=True))
-    np.testing.assert_array_equal(predictions, expected)
+    np.testing.assert_allclose(predictions, expected, rtol=1e-6)

@@ -27,8 +27,10 @@ class S3Xgboost(S3Model):
         ].read()
         if self._model_type == "Booster":
             model = xgboost.Booster()
-        else:
+        elif self._model_type == "XGBClassifier":
             model = xgboost.XGBClassifier()
+        else:
+            raise Exception(f"Unknown model_type {self._model_type}")
         model.load_model(bytearray(body))
         return model
 
