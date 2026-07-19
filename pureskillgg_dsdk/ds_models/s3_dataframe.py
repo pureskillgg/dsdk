@@ -1,4 +1,4 @@
-from io import StringIO
+from io import BytesIO, StringIO
 
 import pandas as pd
 
@@ -19,6 +19,8 @@ class S3Dataframe(S3Model):
     def _load_model(self):
         if self._res_type == "text/csv":
             self._model_data = self._read_csv()
+        elif self._res_type == "application/x-parquet":
+            self._model_data = self._read_parquet()
         else:
             raise Exception(f"Unknown res type {self._res_type}")
 
@@ -26,6 +28,10 @@ class S3Dataframe(S3Model):
         res = self._s3_client.get_object(Bucket=self._bucket, Key=self._key)
         body = res["Body"].read().decode("utf-8")
         return pd.read_csv(StringIO(body))
+
+    def _read_parquet(self):
+        res = self._s3_client.get_object(Bucket=self._bucket, Key=self._key)
+        return pd.read_parquet(BytesIO(res["Body"].read()))
 
     def invoke(self):
         self._log.debug("Invoke: Start")

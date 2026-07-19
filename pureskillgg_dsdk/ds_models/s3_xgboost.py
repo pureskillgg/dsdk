@@ -21,18 +21,14 @@ class S3Xgboost(S3Model):
         raise Exception(f"Unknown res_type {self._res_type}")
 
     def _read_json_model(self):
-        # pylint: disable=import-outside-toplevel
-        try:
-            import xgboost
-        except ImportError as error:
-            raise Exception(
-                "xgboost is not installed: install the pureskillgg-dsdk[xgboost] extra"
-            ) from error
-
+        xgboost = self._import_xgboost()
         body = self._s3_client.get_object(Bucket=self._bucket, Key=self._key)[
             "Body"
         ].read()
-        model = xgboost.XGBClassifier()
+        if self._model_type == "Booster":
+            model = xgboost.Booster()
+        else:
+            model = xgboost.XGBClassifier()
         model.load_model(bytearray(body))
         return model
 
@@ -40,7 +36,22 @@ class S3Xgboost(S3Model):
         if self._model_type == "XGBClassifier":
             probabilities = self._loaded_model.predict_proba(dataframe)
             return probabilities
+        if self._model_type == "Booster":
+            xgboost = self._import_xgboost()
+            dmatrix = xgboost.DMatrix(dataframe, enable_categorical=True)
+            return self._loaded_model.predict(dmatrix)
         raise Exception(f"Unknown model_type {self._model_type}")
+
+    @staticmethod
+    def _import_xgboost():
+        # pylint: disable=import-outside-toplevel
+        try:
+            import xgboost
+        except ImportError as error:
+            raise Exception(
+                "xgboost is not installed: install the pureskillgg-dsdk[xgboost] extra"
+            ) from error
+        return xgboost
 
     def invoke(self, dataframe):
         self._log.debug("Invoke: Start")
