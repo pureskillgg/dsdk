@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.2.0
+
+### Added
+
+- `s3_xgboost` accepts `model_type: Booster`: loads the artifact with
+  `xgboost.Booster` and predicts through a `DMatrix` built with
+  `enable_categorical=True` — serves regressors (e.g. `survival:aft` or
+  percentile-target models saved via `save_model`) and softprob classifiers
+  through one code path, including models with pandas categorical features.
+- `s3_dataframe` accepts `res_type: application/x-parquet` for parquet
+  artifacts (large lookup tables where CSV is impractical).
+
 ## 3.1.0 / 2026-07-13
 
 ### Added
