@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Harden the deploy workflows: pass the version input through `env:` instead of interpolating it into the shell line; give the dispatch and tag workflows readable run titles.
+
 - GitHub Actions updated to Node 24 runtimes: `actions/checkout` v5 to v7; `astral-sh/setup-uv` v8.2.0 to v9.0.0; `crazy-max/ghaction-import-gpg` v5 to v7; `stefanzweifel/git-auto-commit-action` v4 to v7.
 
 ## 3.2.0
