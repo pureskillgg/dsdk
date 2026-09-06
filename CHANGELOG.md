@@ -9,31 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Harden the deploy workflows: pass the version input through `env:` instead of interpolating it into the shell line; give the dispatch and tag workflows readable run titles.
-
-- GitHub Actions updated to Node 24 runtimes: `actions/checkout` v5 to v7; `astral-sh/setup-uv` v8.2.0 to v9.0.0; `crazy-max/ghaction-import-gpg` v5 to v7; `stefanzweifel/git-auto-commit-action` v4 to v7.
+- Harden the deploy workflows.
+- Update GitHub Actions to Node.js 24 runtimes.
 
 ## 3.2.0
 
 ### Added
 
-- `s3_xgboost` accepts `model_type: Booster`: loads the artifact with
-  `xgboost.Booster` and predicts through a `DMatrix` built with
-  `enable_categorical=True` — serves regressors (e.g. `survival:aft` or
-  percentile-target models saved via `save_model`) and softprob classifiers
-  through one code path, including models with pandas categorical features.
-- `s3_dataframe` accepts `res_type: application/x-parquet` for parquet
-  artifacts (large lookup tables where CSV is impractical).
+- `s3_xgboost` support for `model_type: Booster`.
+- `s3_dataframe` support for `res_type: application/x-parquet`.
 
 ## 3.1.0 / 2026-07-13
 
 ### Added
 
-- New `s3_xgboost` ds-model type: loads an XGBoost model saved with
-  `save_model("*.json")` from S3 (`res_type: application/json`) and invokes
-  `predict_proba` (`model_type: XGBClassifier`). Requires the new `xgboost`
-  extra (`pureskillgg-dsdk[xgboost]`) — kept out of the base dependencies so
-  consumers that never load models don't ship the xgboost wheel.
+- `s3_xgboost` ds-model type. Requires the `xgboost` extra (`pureskillgg-dsdk[xgboost]`).
 
 ## 3.0.1 / 2026-06-14
 
@@ -45,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Migrate to Python 3.11+ (CI test matrix 3.11-3.14).
 - Update the data stack: pandas 2.3, numpy 2, pyarrow 16-24, boto3 1.43, structlog 26, python-rapidjson 1.23.
-- Add `pureskillgg_dsdk.sqs`, an async SQS consumer (built on aiobotocore) that replaces the abandoned `loafer` package in the worker services.
+- Add `pureskillgg_dsdk.sqs`, an async SQS consumer replacing `loafer` in the worker services.
 - Update dev tooling: black 26, pylint 4, pytest 9, pytest-cov 7; remove pytest-runner.
 
 ## 2.0.0 / 2024-04-01
