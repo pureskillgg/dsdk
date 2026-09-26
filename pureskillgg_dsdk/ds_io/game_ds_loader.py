@@ -101,7 +101,7 @@ class GameDsLoader:
             output[instruction["channel"]] = df
         return output
 
-    def get_channel(self, instruction: ChannelInstruction) -> (str, pd.DataFrame):
+    def get_channel(self, instruction: ChannelInstruction) -> pd.DataFrame:
         """Read in one channel from a ds object
 
         Args:
@@ -112,7 +112,7 @@ class GameDsLoader:
 
 
         Returns:
-            Pandas data frame containing the data you requested and the channel name.
+            Pandas data frame containing the data you requested.
 
         """
         self._load()

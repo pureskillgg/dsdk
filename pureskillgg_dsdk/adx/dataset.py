@@ -1,4 +1,4 @@
-import dateutil
+import dateutil.parser
 
 import structlog
 import boto3
@@ -60,7 +60,7 @@ class AdxDataset:
             self._writer.export_revision(self._client, self.dataset_id, revision_id)
             log.info("Export Revision: Success")
         except BaseException as err:
-            log.error("Export Revision: Fail", exec_info=err)
+            log.error("Export Revision: Fail", exc_info=err)
             raise
 
     def auto_export_revisions(self):
@@ -88,6 +88,7 @@ class AdxDataset:
             return
 
         res = self._client.get_data_set(DataSetId=self.dataset_id)
+        self._dataset = res
         self.dataset_name = res.get("Name")
         self._log = self._log.bind(dataset_name=self.dataset_name)
 

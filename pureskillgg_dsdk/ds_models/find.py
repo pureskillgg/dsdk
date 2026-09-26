@@ -11,7 +11,7 @@ def find_matching_model(models, filter_dict):
 
     if len(output) > 1:
         raise Exception(
-            f"Found {len(models)} matches in model set but expected only 1 to match filter {json.dumps(filter_dict)}"
+            f"Found {len(output)} matches in model set but expected only 1 to match filter {json.dumps(filter_dict)}"
         )
     if len(output) == 0:
         return None

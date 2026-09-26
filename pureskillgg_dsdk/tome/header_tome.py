@@ -62,7 +62,7 @@ def create_header_tome_from_fs(
 
     reader = TomeReaderFs(
         root_path=tome_collection_root_path,
-        manifest_key="/".join(["tome", ds_type, tome_name, "tome"]),
+        manifest_key="/".join(["tome", ds_type, name, "tome"]),
         log=log,
     )
 
@@ -132,8 +132,7 @@ def get_manifest_key_paths_from_glob(ds_root_path, ds_type):
     manifest_keys = [
         path[len(os.path.commonprefix([root_path, path])) :] for path in paths
     ]
-    manifest_keys = set(manifest_keys)
-    return manifest_keys
+    return sorted(set(manifest_keys))
 
 
 def fetch_ds_loader_from_fs(root_path, manifest_key, log):

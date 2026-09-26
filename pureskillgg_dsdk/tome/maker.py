@@ -105,7 +105,8 @@ class TomeMaker:
             self._header_dataframe = self._existing_tome_loader.header.get_dataframe()
             existing_keyset = self._existing_tome_loader.get_keyset()
             target_keyset = self._existing_tome_loader.header.get_keyset()
-            self.keyset = list(set(target_keyset) - set(existing_keyset))
+            existing = set(existing_keyset)
+            self.keyset = [key for key in target_keyset if key not in existing]
             self._scribe.set_manifest_data(self._existing_tome_loader.manifest)
 
         def overwrite():

@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Harden the deploy workflows.
 - Update GitHub Actions to Node.js 24 runtimes.
 
+### Fixed
+
+- `DsReaderS3` reads manifests stored without `ContentEncoding`.
+- Header tomes list their matches in sorted order, and continued tomes keep the header's order.
+- `create_header_tome_from_fs` works without a tome name.
+- `find_matching_model` reports how many models matched.
+- `s3_dataframe_set` names the unknown `res_type` in its error.
+- `s3_dataframe_set` and `s3_scikit_set` download their model once; `sagemaker_endpoint` creates its client once.
+- `AdxDataset` fetches the dataset once and logs export failures with `exc_info`.
+- Import `dateutil.parser` and `urllib.request` explicitly in the ADX modules.
+- Parquet read errors keep the original `ValueError` as their cause.
+- `GameDsLoader.get_channel` is annotated as returning a `DataFrame`.
+
 ## 3.2.0
 
 ### Added
