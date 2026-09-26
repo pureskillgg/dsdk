@@ -67,7 +67,7 @@ class DsReaderS3:
     def _get_json_object(self, key: str, /) -> Dict:
         res = self._s3_client.get_object(Bucket=self._bucket, Key=key)
 
-        content_encoding = res["ContentEncoding"]
+        content_encoding = res.get("ContentEncoding")
 
         body = res["Body"].read()
         if content_encoding == "gzip":
@@ -87,17 +87,6 @@ class DsReaderS3:
             "content_type": res["ContentType"],
             "last_modified": res["LastModified"].isoformat(),
         }
-
-    def _get_compression(self, channel: Dict, /) -> Union[str, None]:
-        key = self._get_channel_key(channel)
-        res = self._s3_client.head_object(Bucket=self._bucket, Key=key)
-
-        content_encoding = res["ContentEncoding"]
-
-        if content_encoding == "gzip":
-            return "gzip"
-
-        return None
 
     def _get_channel_location(self, channel: Dict, /) -> str:
         key = self._get_channel_key(channel)

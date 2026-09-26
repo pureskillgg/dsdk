@@ -1,6 +1,6 @@
 import os.path
 from gzip import GzipFile
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional
 
 import structlog
 import rapidjson
@@ -61,18 +61,10 @@ class DsReaderFs:
         key = self._get_file_path(channel)
         return os.path.join(self._root_path, key)
 
-    def _get_file_path(self, channel: Union[str, Dict]) -> str:
-        if isinstance(channel, str):
-            key = os.path.join(
-                os.path.normpath(self._manifest_key).split(os.path.sep)[:-1]
-            )
-
-            key = os.path.join(key, channel)
-
-        elif isinstance(channel, dict):
-            key = os.path.normpath(channel["key"])
-        else:
+    def _get_file_path(self, channel: Dict) -> str:
+        if not isinstance(channel, dict):
             raise Exception(f"Unknown channel type {type(channel)}")
+        key = os.path.normpath(channel["key"])
         return add_prefix(key, self._prefix)
 
 
