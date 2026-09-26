@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Harden the deploy workflows.
 - Update GitHub Actions to Node.js 24 runtimes.
+- Depend on `pandas[parquet,fss,aws]` only: the unused `performance`, `plot`, `output-formatting` and `computation` extras (numba, matplotlib, xarray and more) are gone.
+- Allow pyarrow 25.
+- Declare `python-dateutil`, which the ADX module imports.
 
 ### Fixed
 
