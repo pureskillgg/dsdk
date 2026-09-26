@@ -80,9 +80,11 @@ exists and whether it is complete (`isComplete`), combined with
 - The size check is **in-memory** size (`memory_usage(deep=True)`, so string
   contents count), which runs 2-10x larger than the parquet on disk — budget
   pages accordingly.
-- A page is `pd.concat` of the frames passed to `concat`, so columns keep their
-  dtypes; frames with differing columns union (missing values are NA), and
-  frames with no rows are skipped.
+- A page is `pd.concat` of the frames passed to `concat`. A column keeps its
+  dtype when every frame agrees on it; when frames disagree, pandas picks a
+  common dtype (`category` columns with different category sets become
+  `object`, `int64` with `float64` becomes `float64`). Frames with differing
+  columns union (missing values are NA), and frames with no rows are skipped.
 - `TomeManifest` builds the keyset and dataframe parquet keys and records
   per-page and total timings.
 - An **empty tome is not supported** ("Empty Tome not supported"), and there is a
