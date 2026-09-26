@@ -13,6 +13,7 @@ class SagemakerEndpoint:
         self._content_type = model["req_type"]
         self._res_type = model["res_type"]
         self._res_key = model.get("res_key", "data")
+        self._runtime = None
         self._log = log.bind(
             client="sagemaker_endpoint",
             endpoint_name=self._endpoint_name,
@@ -21,9 +22,10 @@ class SagemakerEndpoint:
 
     def invoke(self, dataframe):
         self._log.info("Invoke: Start")
-        runtime = boto3.client("runtime.sagemaker")
+        if self._runtime is None:
+            self._runtime = boto3.client("runtime.sagemaker")
         final_data = self._format_data(dataframe)
-        response = runtime.invoke_endpoint(
+        response = self._runtime.invoke_endpoint(
             EndpointName=self._endpoint_name,
             ContentType=self._content_type,
             Body=final_data,

@@ -29,7 +29,7 @@ class S3DataframeSet(S3Model):
         if self._res_type == "application/x-parquet":
             self._model_data = self._read_parquet()
         else:
-            raise Exception("Unknown res_type {self._res_type}")
+            raise Exception(f"Unknown res_type {self._res_type}")
 
     def _read_parquet(self):
         s3_key = self._get_key(self._selected_key)
@@ -53,5 +53,6 @@ class S3DataframeSet(S3Model):
             raise Exception("You must call select before invoke")
         if self._selected_key is None:
             return None
-        self._load_model()
+        if self._model_data is None:
+            self._load_model()
         return self._model_data

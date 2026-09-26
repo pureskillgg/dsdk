@@ -13,6 +13,7 @@ class S3ScikitSet(S3Model):
         self._model_type = model["model_type"]
         self._model_selected = False
         self._selected_key = None
+        self._model = None
         self._hdbscan = hdbscan
         self._log = log.bind(
             client="s3_scikit_set",
@@ -65,6 +66,7 @@ class S3ScikitSet(S3Model):
             raise Exception("You must call select before invoke")
         if self._selected_key is None:
             return None
-        model = self._load_model()
-        self._use_model(model, dataframe)
+        if self._model is None:
+            self._model = self._load_model()
+        self._use_model(self._model, dataframe)
         return self._model_data
