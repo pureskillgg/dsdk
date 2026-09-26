@@ -3,15 +3,12 @@
 import gzip
 import io
 import json
-import os
 from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
 
 from .reader_s3 import DsReaderS3
-
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 BUCKET = "some-bucket"
 MANIFEST_KEY = "csds/2022/01/01/test-match/csds"

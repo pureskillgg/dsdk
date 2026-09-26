@@ -2,15 +2,12 @@
 # pylint: disable=no-value-for-parameter
 
 import io
-import os
 
 import pandas as pd
 import pytest
 from structlog import get_logger
 
 from .model import create_ds_models
-
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 
 def create_model_config(res_type="application/x-parquet"):

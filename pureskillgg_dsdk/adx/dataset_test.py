@@ -1,12 +1,8 @@
 # pylint: disable=missing-docstring,invalid-name,protected-access
 
-import os
-
 import pytest
 
 from .dataset import AdxDataset, is_date_between
-
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 
 class StubDataExchange:

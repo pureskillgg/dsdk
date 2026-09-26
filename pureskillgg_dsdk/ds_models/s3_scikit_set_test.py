@@ -1,15 +1,12 @@
 # pylint: disable=missing-docstring,invalid-name
 
 import io
-import os
 import pickle
 
 import pandas as pd
 from structlog import get_logger
 
 from .model import create_ds_models
-
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 MODELS = {
     "clusters_test": [
