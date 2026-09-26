@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Harden the deploy workflows.
 - Update GitHub Actions to Node.js 24 runtimes.
+- `TomeScribe` builds pages with `pd.concat`: about 90 times faster, and columns keep their dtypes (`category`, nullable `Int64`, `int8`).
+- `max_page_size_mb` counts the contents of string columns, so string-heavy pages split sooner.
 
 ### Fixed
 
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Import `dateutil.parser` and `urllib.request` explicitly in the ADX modules.
 - Parquet read errors keep the original `ValueError` as their cause.
 - `GameDsLoader.get_channel` is annotated as returning a `DataFrame`.
+- `make_tome` with `behavior_if_complete` or `behavior_if_partial` set to `fail` raises "Tome already exists" instead of an `AttributeError`.
 
 ## 3.2.0
 

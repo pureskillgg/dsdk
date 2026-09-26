@@ -2,6 +2,7 @@
 # pylint: disable=unused-import
 # pylint: disable=unused-argument
 import os
+import re
 import itertools
 import pytest
 import pandas as pd
@@ -206,6 +207,22 @@ def test_make_tome_existing_behavior_overwrite(tmp_path):
         tomer.concat(data["round_end"])
     assert tome_id != curator.get_manifest(continued_tome_name)["id"]
     assert curator.get_manifest(continued_tome_name)["isComplete"] is True
+
+
+@pytest.mark.parametrize(
+    "create_tome,behavior",
+    [
+        (create_partial_tome, {"behavior_if_partial": "fail"}),
+        (create_complete_tome, {"behavior_if_complete": "fail"}),
+    ],
+)
+def test_make_tome_existing_behavior_fail(tmp_path, create_tome, behavior):
+    curator = create_curator_instance(tmp_path)
+    create_tome(curator)
+    tomer = continue_tomer_generator(curator, **behavior)
+    message = f"Tome already exists {re.escape(continued_tome_name)}$"
+    with pytest.raises(Exception, match=message):
+        next(tomer.iterate())
 
 
 def test_make_tome_complete_behavior_continue(tmp_path):
