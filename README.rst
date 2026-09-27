@@ -125,7 +125,8 @@ The tasks are in the ``Makefile``: ``make lint``, ``make test``, ``make watch``
 Publishing
 ~~~~~~~~~~
 
-Set the new version with ``uv version``, then run ``make version``. It commits
+Set the new version with ``uv version <version>`` (or ``uv version --bump
+patch``), then run ``make version``. It commits
 ``pyproject.toml`` and ``uv.lock`` and pushes a signed ``v*`` tag, which
 triggers the publish workflow. Or run the `version workflow`_ by hand with a
 version number or a bump (``patch``, ``minor``, ``major``); it does both steps.
