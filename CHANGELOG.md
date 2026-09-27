@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `max_page_size_mb` counts the contents of string columns, so string-heavy pages split sooner.
 - Depend on `pandas[parquet,fss,aws]` only: the unused `performance`, `plot`, `output-formatting` and `computation` extras (numba, matplotlib, xarray and more) are gone.
 - Allow pyarrow 25.
+- Allow pandas 3. On pandas 3, strings are read as the new `str` dtype, and tome pages write them as Arrow `large_string`.
 - Declare `python-dateutil`, which the ADX module imports.
 
 ### Fixed
