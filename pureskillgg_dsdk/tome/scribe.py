@@ -20,8 +20,7 @@ class TomeScribe:
         self._max_page_row_count = max_page_row_count
         self._limit_check_frequency = limit_check_frequency
 
-        self._data_dict = {}
-        self._data_dict_index = 0
+        self._frames = []
         self._keyset = []
         self._data_df = None
         self._page_counter = 0
@@ -29,7 +28,7 @@ class TomeScribe:
     @property
     def dataframe(self):
         if self._data_df is None:
-            self._data_df = pd.DataFrame.from_dict(self._data_dict, "index")
+            self._data_df = self._build_page()
         return self._data_df
 
     @property
@@ -38,7 +37,7 @@ class TomeScribe:
 
     @property
     def tome_name(self):
-        return self._writer.tome_name
+        return self._manifest.get()["tome"]
 
     @property
     def page_counter(self):
@@ -101,18 +100,26 @@ class TomeScribe:
 
     def _new_page(self) -> None:
         self._keyset = []
-        self._data_dict = {}
-        self._data_dict_index = 0
+        self._frames = []
         self._data_df = None
         self._manifest.start_page()
 
     def _concat_df(self, df):
-        if df is not None:
-            self._data_df = None
-            temp_dict = df.to_dict(orient="records")
-            for entry in temp_dict:
-                self._data_dict[self._data_dict_index] = entry
-                self._data_dict_index += 1
+        # A frame with no rows adds nothing to the page. Skipping it keeps its
+        # columns and dtypes out of the page, as before.
+        if df is None or len(df) == 0:
+            return
+        self._data_df = None
+        # Copy, so later changes to the caller's frame don't reach the page.
+        self._frames.append(df.copy())
+
+    def _build_page(self):
+        if len(self._frames) == 0:
+            return pd.DataFrame()
+        page = pd.concat(self._frames, ignore_index=True)
+        # The page now holds every row; drop the parts so memory isn't doubled.
+        self._frames = [page]
+        return page
 
     def _concat_keys(self, keys):
         if isinstance(keys, list):
@@ -122,10 +129,8 @@ class TomeScribe:
 
     def _get_page_size_mb(self) -> float:
         df = self.dataframe
-        size_in_mb = sum(df.memory_usage()) / 1024 / 1024
+        size_in_mb = df.memory_usage(deep=True).sum() / 1024 / 1024
         return size_in_mb
 
     def _get_page_row_count(self) -> int:
-        df = self.dataframe
-        row_count = df.shape[0]
-        return row_count
+        return sum(len(df) for df in self._frames)

@@ -5,15 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.2.2
+
+### Changed
+
+- `TomeScribe` builds pages with `pd.concat`: about 90 times faster, and columns keep their dtypes (`category`, nullable `Int64`, `int8`).
+- `max_page_size_mb` counts the contents of string columns, so string-heavy pages split sooner.
+- Depend on `pandas[parquet,fss,aws]` only: the unused `performance`, `plot`, `output-formatting` and `computation` extras (numba, matplotlib, xarray and more) are gone.
+- Allow pyarrow 25.
+- Declare `python-dateutil`, which the ADX module imports.
+
+### Fixed
+
+- `make_tome` with `behavior_if_complete` or `behavior_if_partial` set to `fail` raises "Tome already exists" instead of an `AttributeError`.
+
 ## 3.2.1
 
 ### Changed
 
 - Harden the deploy workflows.
 - Update GitHub Actions to Node.js 24 runtimes.
-- Depend on `pandas[parquet,fss,aws]` only: the unused `performance`, `plot`, `output-formatting` and `computation` extras (numba, matplotlib, xarray and more) are gone.
-- Allow pyarrow 25.
-- Declare `python-dateutil`, which the ADX module imports.
 
 ### Fixed
 
