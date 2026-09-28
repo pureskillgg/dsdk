@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from .loader import TomeLoader
 from .manifest import TomeManifest
@@ -146,6 +147,35 @@ def test_page_size_after_reading_the_page_mid_way(tmp_path):
     # Reading the page merges the unmeasured frame into it.
     assert len(scribe.dataframe) == 5 * 40
     scribe.concat(frames[5], "match-5")
+
+    assert scribe.page_size_mb == deep_size_mb(frames)
+
+
+SCHEMA_CHANGES = {
+    "a column appears": ({"a": [1, 2]}, {"a": [3], "b": ["text"]}),
+    "a column goes missing": ({"a": [1, 2], "b": ["x", "y"]}, {"a": [3]}),
+    "bool becomes object": ({"a": [True, False]}, {"a": ["text"]}),
+    "categories differ": (
+        {"a": pd.Categorical(["x", "y"])},
+        {"a": pd.Categorical(["z"])},
+    ),
+}
+
+
+@pytest.mark.parametrize("change", SCHEMA_CHANGES.values(), ids=SCHEMA_CHANGES.keys())
+def test_page_size_follows_schema_changes_between_checks(tmp_path, change):
+    before, after = change
+    scribe = create_scribe(str(tmp_path))
+    frames = [pd.DataFrame(before) for _ in range(50)] + [pd.DataFrame(after)] * 3
+
+    for i, frame in enumerate(frames[:50]):
+        scribe.concat(frame, f"match-{i}")
+    assert scribe.page_size_mb == deep_size_mb(frames[:50])
+    # pd.concat fills or converts the 100 rows already measured.
+    scribe.concat(frames[50], "match-50")
+    assert scribe.page_size_mb == deep_size_mb(frames[:51])
+    scribe.concat(frames[51], "match-51")
+    scribe.concat(frames[52], "match-52")
 
     assert scribe.page_size_mb == deep_size_mb(frames)
 

@@ -102,9 +102,11 @@ exists and whether it is complete (`isComplete`), combined with
   parquet on disk — budget pages accordingly.
 - Each check measures only the frames added since the previous check, and
   adds them to a running total for the page, so frequent checks stay cheap.
-  The total equals the built page's deep size, unless frames measured at
-  different checks disagree on a column's dtype and `pd.concat` converts it
-  (next point).
+  When the new frames add a column, lack one, or bring a different dtype,
+  `pd.concat` fills or converts rows already measured (next point), so that
+  check measures the whole page instead. The total equals the built page's
+  deep size, less its index; a `category` column counts its categories once
+  per check, a small overcount.
 - A page is `pd.concat` of the frames passed to `concat`. A column keeps its
   dtype when every frame agrees on it; when frames disagree, pandas picks a
   common dtype (`category` columns with different category sets become

@@ -23,6 +23,7 @@ class TomeScribe:
         self._frames = []
         self._unmeasured = []
         self._page_bytes = 0
+        self._page_schema = None
         self._keyset = []
         self._data_df = None
         self._page_counter = 0
@@ -105,6 +106,7 @@ class TomeScribe:
         self._frames = []
         self._unmeasured = []
         self._page_bytes = 0
+        self._page_schema = None
         self._data_df = None
         self._manifest.start_page()
 
@@ -130,6 +132,7 @@ class TomeScribe:
             # measures the whole page instead.
             self._unmeasured = [page]
             self._page_bytes = 0
+            self._page_schema = None
         return page
 
     def _concat_keys(self, keys):
@@ -148,15 +151,24 @@ class TomeScribe:
         # the whole page at every check made each check slower as the page
         # grew. deep=True counts string contents, so string-heavy pages still
         # split early. The total equals the built page's
-        # memory_usage(index=False, deep=True), unless frames measured at
-        # different checks disagree on a column's dtype and pd.concat
-        # converts it.
+        # memory_usage(index=False, deep=True), except that a category column
+        # counts its categories once per check instead of once (a small
+        # overcount).
         frames = self._unmeasured
         if len(frames) == 0:
             return
-        new = frames[0] if len(frames) == 1 else pd.concat(frames, ignore_index=True)
-        self._page_bytes += int(new.memory_usage(index=False, deep=True).sum())
         self._unmeasured = []
+        new = frames[0] if len(frames) == 1 else pd.concat(frames, ignore_index=True)
+        schema = new.dtypes.to_dict()
+        if self._page_schema is not None and schema != self._page_schema:
+            # The new frames add a column, lack one, or change a dtype, so
+            # pd.concat fills or converts rows already measured. Measure the
+            # whole page instead; it becomes the one part the scribe holds.
+            new = self.dataframe
+            schema = new.dtypes.to_dict()
+            self._page_bytes = 0
+        self._page_bytes += int(new.memory_usage(index=False, deep=True).sum())
+        self._page_schema = schema
 
     def _get_page_row_count(self) -> int:
         return sum(len(df) for df in self._frames)
