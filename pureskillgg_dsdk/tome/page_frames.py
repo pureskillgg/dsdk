@@ -327,13 +327,14 @@ def _read_page_by_page(pages, names) -> pd.DataFrame:
 
 
 def _concat_attrs(pages):
-    """pd.concat keeps `attrs` only when every page has the same, non-empty ones."""
-    attrs = [page.attrs for page in pages]
-    if len(attrs) == 0 or any(value is None for value in attrs):
+    """
+    pd.concat keeps `attrs` only when every page has equal, non-empty ones. It
+    leaves out pages with no rows and no columns, so the caller does too.
+    """
+    attrs = [json.loads(page.attrs) if page.attrs else {} for page in pages]
+    if len(attrs) == 0 or not all(attrs) or any(value != attrs[0] for value in attrs):
         return {}
-    if any(value != attrs[0] for value in attrs):
-        return {}
-    return json.loads(attrs[0]) or {}
+    return attrs[0]
 
 
 def _types_mapper():

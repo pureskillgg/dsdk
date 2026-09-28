@@ -381,6 +381,30 @@ def test_attrs_are_kept_when_every_page_has_the_same(tmp_path):
     assert concat_pages(root_path, loader).attrs == {"source": "csds"}
 
 
+def test_attrs_in_another_key_order_are_the_same(tmp_path):
+    root_path = str(tmp_path)
+    pages = [frame(a=[1]), frame(a=[2])]
+    pages[0].attrs = {"source": "csds", "version": 1}
+    pages[1].attrs = {"version": 1, "source": "csds"}
+    loader = write_tome(root_path, [(zstd, df) for df in pages])
+
+    expected = concat_pages(root_path, loader).attrs
+    assert expected == {"source": "csds", "version": 1}
+    assert loader.get_dataframe().attrs == expected
+
+
+def test_an_empty_page_keeps_the_attrs(tmp_path):
+    # pd.concat leaves a page with no rows and no columns out, attrs included.
+    root_path = str(tmp_path)
+    data = frame(a=[1, 2])
+    data.attrs = {"source": "csds"}
+    loader = write_tome(root_path, [(zstd, data), (zstd, pd.DataFrame())])
+
+    expected = concat_pages(root_path, loader).attrs
+    assert expected == {"source": "csds"}
+    assert loader.get_dataframe().attrs == expected
+
+
 def test_attrs_are_dropped_when_pages_differ(tmp_path):
     root_path = str(tmp_path)
     differ = [frame(a=[1]), frame(a=[2])]
