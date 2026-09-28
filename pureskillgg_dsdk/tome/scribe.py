@@ -21,6 +21,8 @@ class TomeScribe:
         self._limit_check_frequency = limit_check_frequency
 
         self._frames = []
+        self._unmeasured = []
+        self._page_bytes = 0
         self._keyset = []
         self._data_df = None
         self._page_counter = 0
@@ -101,6 +103,8 @@ class TomeScribe:
     def _new_page(self) -> None:
         self._keyset = []
         self._frames = []
+        self._unmeasured = []
+        self._page_bytes = 0
         self._data_df = None
         self._manifest.start_page()
 
@@ -111,7 +115,9 @@ class TomeScribe:
             return
         self._data_df = None
         # Copy, so later changes to the caller's frame don't reach the page.
-        self._frames.append(df.copy())
+        frame = df.copy()
+        self._frames.append(frame)
+        self._unmeasured.append(frame)
 
     def _build_page(self):
         if len(self._frames) == 0:
@@ -119,6 +125,11 @@ class TomeScribe:
         page = pd.concat(self._frames, ignore_index=True)
         # The page now holds every row; drop the parts so memory isn't doubled.
         self._frames = [page]
+        if len(self._unmeasured) > 0:
+            # Don't keep unmeasured parts alive either: the next size check
+            # measures the whole page instead.
+            self._unmeasured = [page]
+            self._page_bytes = 0
         return page
 
     def _concat_keys(self, keys):
@@ -128,9 +139,24 @@ class TomeScribe:
             self._keyset.append(keys)
 
     def _get_page_size_mb(self) -> float:
-        df = self.dataframe
-        size_in_mb = df.memory_usage(deep=True).sum() / 1024 / 1024
-        return size_in_mb
+        self._measure_new_frames()
+        return self._page_bytes / 1024 / 1024
+
+    def _measure_new_frames(self) -> None:
+        # Measure only the frames added since the last check, in one
+        # memory_usage call, and keep a running total for the page. Measuring
+        # the whole page at every check made each check slower as the page
+        # grew. deep=True counts string contents, so string-heavy pages still
+        # split early. The total equals the built page's
+        # memory_usage(index=False, deep=True), unless frames measured at
+        # different checks disagree on a column's dtype and pd.concat
+        # converts it.
+        frames = self._unmeasured
+        if len(frames) == 0:
+            return
+        new = frames[0] if len(frames) == 1 else pd.concat(frames, ignore_index=True)
+        self._page_bytes += int(new.memory_usage(index=False, deep=True).sum())
+        self._unmeasured = []
 
     def _get_page_row_count(self) -> int:
         return sum(len(df) for df in self._frames)

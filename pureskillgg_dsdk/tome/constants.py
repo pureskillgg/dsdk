@@ -3,6 +3,10 @@ import re
 import warnings
 import structlog
 
+# Parquet codec for new tome pages. dsdk 3.2.2 and earlier wrote gzip pages;
+# pyarrow reads both, and a tome may mix them.
+DEFAULT_PAGE_COMPRESSION = "zstd"
+
 
 def get_page_path_fs(path, subtype, page):
     return os.path.join(path, page[subtype]["key"])

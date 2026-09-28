@@ -14,7 +14,7 @@ from .maker import TomeMaker
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
 from .header_copier_fs import HeaderTomeCopierFs
-from .constants import warn_if_invalid_tome_name
+from .constants import DEFAULT_PAGE_COMPRESSION, warn_if_invalid_tome_name
 
 from ..ds_io import ChannelInstruction, DsReaderFs, GameDsLoader
 
@@ -63,7 +63,12 @@ class TomeCuratorFs:
         )
 
     def create_header_tome(
-        self, tome_name: str = None, /, *, path_depth=None
+        self,
+        tome_name: str = None,
+        /,
+        *,
+        path_depth=None,
+        compression: str | None = DEFAULT_PAGE_COMPRESSION,
     ) -> TomeLoader:
         """
         Create the header tome.
@@ -74,6 +79,8 @@ class TomeCuratorFs:
             Name of the header that will be created.
         path depth : int, default=4
             DEPRECATED. Please do not use. Search is recursive.
+        compression : str or None, default="zstd"
+            Parquet codec for the tome's pages (see `make_tome`).
 
         Returns
         -------
@@ -91,6 +98,7 @@ class TomeCuratorFs:
             ds_type=self._ds_type,
             tome_collection_root_path=self._tome_collection_root_path,
             ds_collection_root_path=self._ds_collection_root_path,
+            compression=compression,
             log=self._log,
         )
 
@@ -101,6 +109,7 @@ class TomeCuratorFs:
         /,
         *,
         src_tome_name: str = None,
+        compression: str | None = DEFAULT_PAGE_COMPRESSION,
     ) -> TomeLoader:
         """
         Create a subheader tome.
@@ -116,6 +125,8 @@ class TomeCuratorFs:
         src_tome_name : str, default=`default_header_name`
             Source header file. Should be the same as the
             default header name in most cases.
+        compression : str or None, default="zstd"
+            Parquet codec for the tome's pages (see `make_tome`).
 
         Returns
         -------
@@ -131,6 +142,7 @@ class TomeCuratorFs:
             src_tome_name=src_name,
             selector=selector,
             tome_collection_root_path=self._tome_collection_root_path,
+            compression=compression,
             log=self._log,
         )
 
@@ -306,6 +318,7 @@ class TomeCuratorFs:
         max_page_size_mb: float = None,
         max_page_row_count: int = None,
         limit_check_frequency: int = 100,
+        compression: str | None = DEFAULT_PAGE_COMPRESSION,
         **kwargs,
     ) -> TomeMaker:
         """
@@ -328,6 +341,13 @@ class TomeCuratorFs:
             How often the scribe should check if it exceeded the max size or
             max row count. This should be a multiple of the print frequency
             which is set to 100.
+        compression : str or None, default="zstd"
+            Parquet codec for the pages this call writes, including the
+            tome's copy of its header. Any codec `DataFrame.to_parquet`
+            accepts: ``"gzip"`` writes pages in the format dsdk 3.2.2 and
+            earlier used, and ``None`` writes them uncompressed. Pages
+            already written are left as they are, so continuing a gzip tome
+            with the default adds zstd pages; the tome still reads whole.
         **kwargs:
             Keywords passed through to the TomeMaker.
 
@@ -349,6 +369,7 @@ class TomeCuratorFs:
         header_loader = self.get_loader(header_name)
         writer = TomeWriterFs(
             root_path=self._tome_collection_root_path,
+            compression=compression,
             log=self._log,
         )
         manifest = TomeManifest(
@@ -370,6 +391,7 @@ class TomeCuratorFs:
             tome_collection_root_path=self._tome_collection_root_path,
             dest_tome_name=name,
             ds_type=self._ds_type,
+            compression=compression,
             log=self._log,
         )
 
