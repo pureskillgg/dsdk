@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 3.3.0
+
+### Added
+
+- `compression` argument on `make_tome`, `create_header_tome`, `create_subheader_tome` and `TomeWriterFs`: the parquet codec for new tome pages. It takes any codec `DataFrame.to_parquet` accepts, and an unknown one fails before any page is written.
+
+### Changed
+
+- New tome pages are written with zstd instead of gzip. pyarrow writes gzip at level 9, which was about 95% of the time to build a large tome: a 17.4M-row page writes in 5 s with zstd against 119 s with gzip, and is 4% smaller. Pass `compression="gzip"` for the old format. Existing gzip tomes read unchanged, and a tome continued with a different codec reads back whole.
+- The `max_page_size_mb` check measures only the frames added since the previous check, not the whole page every time; when new frames change the page's columns or dtypes, it measures the whole page as before. Pages split at the same points; the measure now leaves out the page's index (about 130 bytes).
+
 ## 3.2.2
 
 ### Changed

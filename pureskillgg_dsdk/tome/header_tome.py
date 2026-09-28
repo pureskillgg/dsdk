@@ -8,7 +8,11 @@ from .scribe import TomeScribe
 from .manifest import TomeManifest
 from .writer_fs import TomeWriterFs
 from .reader_fs import TomeReaderFs
-from .constants import filter_ds_reader_logs, warn_if_invalid_tome_name
+from .constants import (
+    DEFAULT_PAGE_COMPRESSION,
+    filter_ds_reader_logs,
+    warn_if_invalid_tome_name,
+)
 
 
 def default_tome_name():
@@ -26,9 +30,10 @@ def create_header_tome_from_fs(
     ds_collection_root_path="data",
     path_depth=None,
     update_frequency=0,
+    compression=DEFAULT_PAGE_COMPRESSION,
     log=None,
 ):
-    """Make the header tome"""
+    """Make the header tome. compression is the parquet codec for its pages."""
     name = default_tome_name() if tome_name is None else tome_name
     warn_if_invalid_tome_name(name)
     log = (
@@ -39,7 +44,9 @@ def create_header_tome_from_fs(
         )
     )
 
-    writer = TomeWriterFs(root_path=tome_collection_root_path, log=log)
+    writer = TomeWriterFs(
+        root_path=tome_collection_root_path, compression=compression, log=log
+    )
     tome_manifest = TomeManifest(tome_name=name, ds_type=ds_type, is_header=True)
     scribe = TomeScribe(manifest=tome_manifest, writer=writer, log=log)
 
@@ -80,11 +87,13 @@ def create_subheader_tome_from_fs(
     ds_type="csds",
     is_copied_header=False,
     preserve_src_id=False,
+    compression=DEFAULT_PAGE_COMPRESSION,
     log=None,
 ):
     """
     selector is passed to filter out rows from the header
-    by doing df = df.loc[selector]
+    by doing df = df.loc[selector]. compression is the parquet codec
+    for the new tome's pages.
     """
     warn_if_invalid_tome_name(name)
     log = log if log is not None else structlog.get_logger()
@@ -99,6 +108,7 @@ def create_subheader_tome_from_fs(
 
     writer = TomeWriterFs(
         root_path=tome_collection_root_path,
+        compression=compression,
         log=log,
     )
 

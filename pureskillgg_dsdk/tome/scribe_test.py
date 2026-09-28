@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from .loader import TomeLoader
 from .manifest import TomeManifest
@@ -103,6 +104,102 @@ def test_page_size_counts_string_contents(tmp_path):
 
     # 1024 strings of 1 KiB each: at least 1 MiB, however pandas counts it.
     assert scribe.page_size_mb >= 1.0
+
+
+def make_text_frame(rows, text_length, seed):
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame(
+        {
+            "tick": np.arange(rows, dtype="int32"),
+            "x": rng.random(rows),
+            "name": [f"{i:06d}".ljust(text_length, "x") for i in range(rows)],
+            "weapon": rng.choice(WEAPONS, rows),
+        }
+    )
+
+
+def deep_size_mb(frames):
+    page = pd.concat(frames, ignore_index=True)
+    return page.memory_usage(index=False, deep=True).sum() / 1024 / 1024
+
+
+def test_page_size_is_the_deep_size_of_the_page_so_far(tmp_path):
+    scribe = create_scribe(str(tmp_path))
+    frames = [make_text_frame(50 + 10 * i, 20 + i, i) for i in range(12)]
+
+    for i, frame in enumerate(frames):
+        scribe.concat(frame, f"match-{i}")
+        # Check at uneven intervals, so some checks see several new frames.
+        if i % 5 in (0, 3):
+            assert scribe.page_size_mb == deep_size_mb(frames[: i + 1])
+
+    assert scribe.page_size_mb == deep_size_mb(frames)
+
+
+def test_page_size_after_reading_the_page_mid_way(tmp_path):
+    scribe = create_scribe(str(tmp_path))
+    frames = [make_text_frame(40, 30 + i, i) for i in range(6)]
+
+    for i, frame in enumerate(frames[:4]):
+        scribe.concat(frame, f"match-{i}")
+    assert scribe.page_size_mb == deep_size_mb(frames[:4])
+    scribe.concat(frames[4], "match-4")
+    # Reading the page merges the unmeasured frame into it.
+    assert len(scribe.dataframe) == 5 * 40
+    scribe.concat(frames[5], "match-5")
+
+    assert scribe.page_size_mb == deep_size_mb(frames)
+
+
+SCHEMA_CHANGES = {
+    "a column appears": ({"a": [1, 2]}, {"a": [3], "b": ["text"]}),
+    "a column goes missing": ({"a": [1, 2], "b": ["x", "y"]}, {"a": [3]}),
+    "bool becomes object": ({"a": [True, False]}, {"a": ["text"]}),
+    "categories differ": (
+        {"a": pd.Categorical(["x", "y"])},
+        {"a": pd.Categorical(["z"])},
+    ),
+}
+
+
+@pytest.mark.parametrize("change", SCHEMA_CHANGES.values(), ids=SCHEMA_CHANGES.keys())
+def test_page_size_follows_schema_changes_between_checks(tmp_path, change):
+    before, after = change
+    scribe = create_scribe(str(tmp_path))
+    frames = [pd.DataFrame(before) for _ in range(50)] + [pd.DataFrame(after)] * 3
+
+    for i, frame in enumerate(frames[:50]):
+        scribe.concat(frame, f"match-{i}")
+    assert scribe.page_size_mb == deep_size_mb(frames[:50])
+    # pd.concat fills or converts the 100 rows already measured.
+    scribe.concat(frames[50], "match-50")
+    assert scribe.page_size_mb == deep_size_mb(frames[:51])
+    scribe.concat(frames[51], "match-51")
+    scribe.concat(frames[52], "match-52")
+
+    assert scribe.page_size_mb == deep_size_mb(frames)
+
+
+def test_string_heavy_pages_split_on_size(tmp_path):
+    root_path = str(tmp_path)
+    # 256 strings of 1 KiB: at least 0.25 MiB a frame, however pandas stores
+    # strings. The numbers alone (int32 and float64) are 3 KiB a frame.
+    frames = [make_text_frame(256, 1024, i) for i in range(10)]
+    assert 0.25 <= deep_size_mb(frames[:1]) < 0.3
+    scribe = create_scribe(root_path, max_page_size_mb=0.9, limit_check_frequency=1)
+
+    scribe.start()
+    for i, frame in enumerate(frames):
+        scribe.concat(frame, f"match-{i}")
+    scribe.finish()
+
+    loader = create_loader(root_path)
+    pages = list(loader.iterate_pages())
+    assert [len(keyset) for _, keyset in pages] == [4, 4, 2]
+    pd.testing.assert_frame_equal(
+        pd.concat([df for df, _ in pages], ignore_index=True),
+        pd.concat(frames, ignore_index=True),
+    )
 
 
 def test_pages_split_on_row_count(tmp_path):

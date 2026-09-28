@@ -56,6 +56,26 @@ Reading back:
 - `get_dataframe`, `get_keyset`, `get_manifest`, `iterate_pages`
 - `get_match_by_index`, `get_random_match`
 
+## Page storage
+
+A tome is a folder: the JSON manifest `tome`, and two parquet files per page,
+`dataframe_NNNNN` (the rows) and `keyset_NNNNN` (the match keys). A tome built
+on a header also holds a copy of that header under `header/`.
+
+- **Codec.** New pages are written with **zstd**. dsdk 3.2.2 and earlier wrote
+  gzip, at pyarrow's default level 9, and that write was about 95% of the time
+  to build a large tome: one 17.4M-row page took 119 s with gzip and 5 s with
+  zstd, and came out 4% smaller.
+- `make_tome`, `create_header_tome` and `create_subheader_tome` (and
+  `TomeWriterFs`) take `compression=`, any codec `DataFrame.to_parquet`
+  accepts: `"gzip"` for the old format, `None` for uncompressed pages. An
+  unknown codec fails when the writer is created, not at the first page.
+  `make_tome` writes the tome's header copy with the same codec.
+- Each page file records its own codec, so readers need no setting. Old gzip
+  tomes read unchanged, and a tome continued with a different codec (for
+  example a gzip tome continued with the zstd default) reads back whole.
+  pyarrow, polars and DuckDB all read zstd parquet.
+
 ## make_tome resume / overwrite state machine
 
 `TomeMaker.make_tome` is the subtle part. It branches on whether a tome already
@@ -77,9 +97,16 @@ exists and whether it is complete (`isComplete`), combined with
 
 - Page splitting only triggers on a `limit_check_frequency` boundary **and** only
   when `max_page_size_mb` or `max_page_row_count` is set.
-- The size check is **in-memory** size (`memory_usage(deep=True)`, so string
-  contents count), which runs 2-10x larger than the parquet on disk — budget
-  pages accordingly.
+- The size check is **in-memory** size (`memory_usage(deep=True)` of the
+  page's columns, so string contents count), which runs 2-10x larger than the
+  parquet on disk — budget pages accordingly.
+- Each check measures only the frames added since the previous check, and
+  adds them to a running total for the page, so frequent checks stay cheap.
+  When the new frames add a column, lack one, or bring a different dtype,
+  `pd.concat` fills or converts rows already measured (next point), so that
+  check measures the whole page instead. The total equals the built page's
+  deep size, less its index; a `category` column counts its categories once
+  per check, a small overcount.
 - A page is `pd.concat` of the frames passed to `concat`. A column keeps its
   dtype when every frame agrees on it; when frames disagree, pandas picks a
   common dtype (`category` columns with different category sets become

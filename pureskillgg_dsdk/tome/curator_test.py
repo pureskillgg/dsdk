@@ -6,6 +6,9 @@ import re
 import itertools
 import pytest
 import pandas as pd
+import pyarrow.parquet as pq
+from ..ds_io import DsReaderFs, GameDsLoader
+from .constants import get_page_path_fs
 from .curator import TomeCuratorFs
 
 # pylint: disable=invalid-name
@@ -243,6 +246,101 @@ def test_make_tome_complete_behavior_overwrite(tmp_path):
     for data, _ in tomer.iterate():
         tomer.concat(data["round_end"])
     assert tome_id != curator.get_manifest(continued_tome_name)["id"]
+
+
+def page_codecs(root_path, loader):
+    """The codec of each page's dataframe file, in page order."""
+    return [
+        pq.ParquetFile(get_page_path_fs(root_path, "dataframe", page))
+        .metadata.row_group(0)
+        .column(0)
+        .compression
+        for page in loader.manifest["pages"]
+    ]
+
+
+def read_round_ends(keys):
+    frames = []
+    for key in keys:
+        reader = DsReaderFs(root_path=ds_collection_root_path, manifest_key=key)
+        frames.append(GameDsLoader(reader=reader).get_channel({"channel": "round_end"}))
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_tome_pages_default_to_zstd(tmp_path):
+    curator = create_curator_instance(tmp_path)
+    create_complete_tome(curator)
+
+    tome = curator.get_loader(continued_tome_name)
+    for loader in [
+        curator.get_header_loader(),
+        curator.get_loader(sub_header_name),
+        tome,
+        tome.header,
+    ]:
+        codecs = page_codecs(tmp_path, loader)
+        assert len(codecs) > 0
+        assert set(codecs) == {"ZSTD"}
+
+
+def test_compression_reaches_every_tome_a_curator_writes(tmp_path):
+    curator = create_curator_instance(tmp_path)
+    curator.create_header_tome(compression="gzip")
+    curator.create_subheader_tome(
+        sub_header_name, lambda df: [True] * len(df), compression="gzip"
+    )
+    tomer = curator.make_tome(
+        new_tome_name,
+        header_tome_name=sub_header_name,
+        ds_reading_instructions=[{"channel": "round_end"}],
+        compression="gzip",
+    )
+    for data, _ in tomer.iterate():
+        tomer.concat(data["round_end"])
+
+    tome = curator.get_loader(new_tome_name)
+    for loader in [
+        curator.get_header_loader(),
+        curator.get_loader(sub_header_name),
+        tome,
+        tome.header,
+    ]:
+        assert set(page_codecs(tmp_path, loader)) == {"GZIP"}
+    keyset = curator.get_keyset(sub_header_name)
+    pd.testing.assert_frame_equal(
+        tome.get_dataframe().reset_index(drop=True), read_round_ends(keyset)
+    )
+
+
+def test_gzip_tome_continued_with_zstd_reads_whole(tmp_path):
+    curator = create_curator_instance(tmp_path)
+    create_header_and_subheader(curator)
+    tomer = curator.make_tome(
+        continued_tome_name,
+        header_tome_name=sub_header_name,
+        ds_reading_instructions=[{"channel": "round_end"}],
+        max_page_row_count=1,
+        limit_check_frequency=1,
+        compression="gzip",
+    )
+    for data, _ in tomer.iterate():
+        tomer.concat(data["round_end"])
+        break
+    assert curator.get_manifest(continued_tome_name)["isComplete"] is False
+
+    # Continue with the default codec.
+    tomer = continue_tomer_generator(curator, behavior_if_partial="continue")
+    for data, _ in tomer.iterate():
+        tomer.concat(data["round_end"])
+
+    loader = curator.get_loader(continued_tome_name)
+    keyset = curator.get_keyset(sub_header_name)
+    assert loader.manifest["isComplete"] is True
+    assert page_codecs(tmp_path, loader) == ["GZIP", "ZSTD"]
+    assert loader.get_keyset() == keyset
+    pd.testing.assert_frame_equal(
+        loader.get_dataframe().reset_index(drop=True), read_round_ends(keyset)
+    )
 
 
 def test_get_random_match(tmp_path):
