@@ -148,6 +148,9 @@ class _Build:
                 f"max_page_size_mb must be positive or None, not {max_page_size_mb}"
             )
         warn_if_invalid_tome_name(header_tome_name)
+        if "{dates}" not in tome_name:
+            # The names don't wait for the header: check them before reading.
+            tome_names(tome_name, self._columns, None, header_tome_name)
 
         self._tome_name = tome_name
         self._header_name = header_tome_name
@@ -176,7 +179,7 @@ class _Build:
         if keep_header:
             paths = self._load_header()
             dates = header_dates(self._loader(self._header_name).get_dataframe())
-            names = tome_names(self._tome_name, self._columns, dates)
+            names = tome_names(self._tome_name, self._columns, dates, self._header_name)
             channels = [c for c, name in names.items() if self._build_tome(name)]
         else:
             paths = self._header_paths()
@@ -188,7 +191,7 @@ class _Build:
         if header is not None:
             header.finish()
             dates = header_dates(self._loader(self._header_name).get_dataframe())
-            names = tome_names(self._tome_name, self._columns, dates)
+            names = tome_names(self._tome_name, self._columns, dates, self._header_name)
             scribes = {c: s for c, s in scribes.items() if self._build_tome(names[c])}
         for channel, scribe in scribes.items():
             self._publish(channel, scribe, names[channel])
@@ -361,9 +364,16 @@ class _Build:
             return
         scribe.finish()
         manifest = scribe.manifest
-        staged = [dict(page) for page in manifest["pages"]]
+        final = dict(
+            manifest, tome=name, key=make_key(["tome", self._ds_type, name, "tome"])
+        )
+        # Mark the destination partial, with no pages, before any page file
+        # there is replaced: an interrupted publish leaves a partial tome,
+        # which the next build builds again, never a complete tome whose
+        # pages are half old and half new.
+        self._writer.write_manifest(dict(final, isComplete=False, pages=[]))
         pages = []
-        for page in staged:
+        for page in manifest["pages"]:
             moved = dict(page)
             for subtype in ("dataframe", "keyset"):
                 key = make_key(["tome", self._ds_type, name, page[subtype][subtype]])
@@ -374,16 +384,8 @@ class _Build:
                 )
                 moved[subtype] = dict(page[subtype], key=key)
             pages.append(moved)
-        final = dict(
-            manifest,
-            tome=name,
-            key=make_key(["tome", self._ds_type, name, "tome"]),
-            pages=pages,
-        )
-        # Until the header copy is written, the tome reads as partial.
-        self._writer.write_manifest(dict(final, isComplete=False))
         self._copy_header(name, scribe.keys)
-        self._writer.write_manifest(final)
+        self._writer.write_manifest(dict(final, pages=pages))
 
     def _copy_header(self, name, keys):
         """The tome's header copy: the header rows of the matches it holds."""
@@ -801,10 +803,16 @@ def check_behaviors(if_complete, if_partial):
             raise ValueError(f"{name} must be one of {allowed}, not {behavior!r}")
 
 
-def tome_names(tome_name, channels, dates) -> dict:
+def tome_names(tome_name, channels, dates, header_name) -> dict:
     if dates is None and "{dates}" in tome_name:
         raise ValueError("tome_name uses {dates}, but the header has no match_date")
-    return {c: tome_name.format(channel=c, dates=dates) for c in channels}
+    names = {c: tome_name.format(channel=c, dates=dates) for c in channels}
+    for channel, name in names.items():
+        if name == header_name:
+            raise ValueError(
+                f"The tome of channel {channel} would be the header tome {name}"
+            )
+    return names
 
 
 def header_dates(header) -> str | None:

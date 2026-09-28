@@ -617,6 +617,42 @@ def test_an_interrupted_build_leaves_no_partial_tome(
     assert not os.path.exists(staging(tmp_path / "tomes"))
 
 
+def test_an_interrupted_publish_leaves_the_tome_partial(
+    tmp_path, drift_collection, monkeypatch
+):
+    curator = make_curator(tmp_path / "tomes", drift_collection)
+    first = curator.build_basic_tomes(["player_death"], max_page_size_mb=0.001)
+    name = first.tomes["player_death"].manifest["tome"]
+    complete = frame(first.tomes["player_death"])
+    assert len(first.tomes["player_death"].manifest["pages"]) > 1
+    # Stop the rebuild after it has moved one page file over the old tome.
+    real = builder.ensure_dir
+    calls = {"n": 0}
+
+    def ensure_dir(path):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("interrupted")
+        real(path)
+
+    monkeypatch.setattr(builder, "ensure_dir", ensure_dir)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        curator.build_basic_tomes(
+            ["player_death"], max_page_size_mb=0.001, behavior_if_complete="overwrite"
+        )
+    monkeypatch.undo()
+
+    # The old tome no longer reads as complete, with its pages half replaced.
+    interrupted = curator.get_loader(name).manifest
+    assert interrupted["isComplete"] is False
+    assert interrupted["pages"] == []
+
+    again = curator.build_basic_tomes(["player_death"], max_page_size_mb=0.001)
+
+    assert again.tomes["player_death"].manifest["isComplete"] is True
+    pd.testing.assert_frame_equal(frame(again.tomes["player_death"]), complete)
+
+
 def test_partial_header_is_built_again(tmp_path, drift_collection):
     curator = make_curator(tmp_path / "tomes", drift_collection)
     first = curator.build_basic_tomes(["round_end"])
@@ -722,6 +758,26 @@ def test_bad_arguments_fail_before_any_read(tmp_path, kwargs, message):
             ds_collection_root_path="does-not-exist",
             header_tome_name=HEADER,
             **kwargs,
+        )
+
+
+def test_a_channel_tome_may_not_be_the_header(tmp_path, drift_collection):
+    # Known before reading, when the name doesn't use {dates}.
+    with pytest.raises(ValueError, match="would be the header tome"):
+        build_basic_tomes_from_fs(
+            ["round_end", "header"],
+            tome_name="{channel}.2022-01-01,2022-01-02",
+            header_tome_name="header.2022-01-01,2022-01-02",
+            tome_collection_root_path=str(tmp_path),
+            ds_collection_root_path="does-not-exist",
+        )
+    # Known once the header gives the dates.
+    curator = make_curator(tmp_path / "tomes", drift_collection)
+    with pytest.raises(ValueError, match="would be the header tome"):
+        curator.build_basic_tomes(
+            ["header"],
+            tome_name="{channel}.{dates}",
+            header_tome_name="header.2022-05-15,2022-05-18",
         )
 
 
