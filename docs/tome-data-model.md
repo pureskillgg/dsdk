@@ -53,8 +53,53 @@ Kinds of tome:
 
 Reading back:
 
-- `get_dataframe`, `get_keyset`, `get_manifest`, `iterate_pages`
+- `get_dataframe`, `scan`, `get_keyset`, `get_manifest`, `iterate_pages`
 - `get_match_by_index`, `get_random_match`
+
+## Loading a tome
+
+`get_dataframe(columns=None, library="pandas")` reads every page into one
+frame; `columns` picks columns, in that order. A tome with no pages raises
+`ValueError`.
+
+- **pandas, the default.** One pyarrow dataset scan over the pages, then one
+  conversion to pandas. The frame equals `pd.concat` of the pages read one by
+  one with `pd.read_parquet`, as dsdk 3.2.2 and earlier returned it: the same
+  values and dtypes, including the `Int64` pandas restores from a page's
+  metadata, and `object` or `str` strings depending on the pandas version.
+- **One index.** The frame has one `RangeIndex`, 0 to n - 1. dsdk 3.2.2 and
+  earlier repeated each page's index, and pages written by dsdk 3.2.1 and
+  earlier restored the index they stored (`__index_level_0__`). The old index
+  is not kept as a column.
+- **Pages that differ.** A column goes through the one scan when its Arrow
+  type and pandas dtype agree on every page, and in the two drifts real tomes
+  have:
+  - an id column that some csds versions declare `int64` and others `Int64`:
+    joined as `Int64`, as `pd.concat` does;
+  - `player_id_fixed` and `attacker_id_fixed`, int64 on some pages and double
+    on others: joined as `float64`, when the page footers' statistics show
+    every int64 value within ±2^53, which a double holds exactly.
+
+  Any other difference, a column some pages lack, and a `category` column on
+  several pages are read page by page and joined with `pd.concat`, as before:
+  pandas picks their dtype in ways pyarrow doesn't, and differently in
+  pandas 2 and 3.
+- **polars.** `get_dataframe(library="polars")` returns a polars DataFrame,
+  and `scan()` a LazyFrame that reads only the columns and rows a query
+  needs. Both need the `polars` extra (`pureskillgg-dsdk[polars]`). Each page
+  is scanned with `pl.scan_parquet`, old pages' index column is dropped, and
+  the pages are joined with `pl.concat(how="diagonal_relaxed")`. polars keeps
+  its own types: it has no `int64`/`Int64` split, strings are `String`, and a
+  column int64 on some pages and double on others is `Float64`.
+
+Warm loads, median of 3, on the maintainer's machine:
+
+| tome | pandas | 3.2.2 | 3.3.0 | polars |
+| --- | --- | --- | --- | --- |
+| 9 gzip pages, 6.1M rows × 48 columns | 2.3.3 | 1.53 s | 0.77 s | 0.21 s |
+| | 3.0.6 | 1.26 s | 0.45 s | 0.21 s |
+| 9 zstd pages, 17.4M rows × 7 columns, `player_id_fixed` drifting | 2.3.3 | 1.25 s | 0.67 s | 0.08 s |
+| | 3.0.6 | 0.80 s | 0.30 s | 0.08 s |
 
 ## Page storage
 

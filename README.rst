@@ -30,6 +30,11 @@ The ``s3_xgboost`` model type needs the ``xgboost`` extra::
 
     $ uv add "pureskillgg-dsdk[xgboost]"
 
+Reading tomes into polars (``get_dataframe(library="polars")`` and ``scan()``)
+needs the ``polars`` extra::
+
+    $ uv add "pureskillgg-dsdk[polars]"
+
 Usage
 -----
 
