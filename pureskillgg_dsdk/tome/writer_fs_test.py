@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
@@ -90,6 +91,26 @@ def test_pages_round_trip_with_any_codec(tmp_path, compression, codec):
         loader.get_dataframe().reset_index(drop=True),
         pd.concat(frames, ignore_index=True),
     )
+
+
+@pytest.mark.parametrize("compression,codec", [("zstd", "ZSTD"), ("gzip", "GZIP")])
+def test_a_pyarrow_table_page_is_written_as_it_is(tmp_path, compression, codec):
+    root_path = str(tmp_path)
+    frame = make_frame(1)
+    table = pa.Table.from_pandas(frame, preserve_index=False)
+    manifest = TomeManifest(tome_name=TOME_NAME, ds_type=DS_TYPE)
+    writer = TomeWriterFs(root_path=root_path, compression=compression)
+    manifest.start_page()
+    page = manifest.end_page(0)
+
+    writer.write_page(page, table, ["match-0"])
+
+    path = get_page_path_fs(root_path, "dataframe", page)
+    assert pq.ParquetFile(path).metadata.row_group(0).column(0).compression == codec
+    assert pq.read_schema(path).pandas_metadata == table.schema.pandas_metadata
+    pd.testing.assert_frame_equal(pd.read_parquet(path), frame)
+    keyset = pd.read_parquet(get_page_path_fs(root_path, "keyset", page))
+    assert list(keyset["_"]) == ["match-0"]
 
 
 def test_unknown_codec_fails_before_any_page_is_written(tmp_path):

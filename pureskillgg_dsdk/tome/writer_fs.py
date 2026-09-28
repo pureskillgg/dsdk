@@ -5,6 +5,8 @@ from pathlib import Path
 import structlog
 import rapidjson
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from .constants import DEFAULT_PAGE_COMPRESSION, get_page_path_fs
 
@@ -58,6 +60,12 @@ class TomeWriterFs:
         self._write_json(file_location, manifest)
 
     def write_page(self, page, dataframe, keyset):
+        """
+        Write one page: its rows and its keyset.
+
+        dataframe is a pandas ``DataFrame``, or a ``pyarrow.Table`` that is
+        written as it is, pandas metadata included.
+        """
         ensure_dir(self._get_page_key("dataframe", page))
         self._log.info("Write Page Start", page_number=page["number"])
         self._write_dataframe(page, dataframe)
@@ -89,8 +97,11 @@ class TomeWriterFs:
     def _get_page_key(self, subtype, page):
         return get_page_path_fs(self._root_path, subtype, page)
 
-    def _write_parquet(self, key: str, df: pd.DataFrame) -> None:
+    def _write_parquet(self, key: str, df: pd.DataFrame | pa.Table) -> None:
         self._log.debug("Write parquet", key=key)
+        if isinstance(df, pa.Table):
+            pq.write_table(df, key, compression=self._parquet_compression)
+            return
         df.to_parquet(key, compression=self._parquet_compression)
 
     def _write_json(self, key, data):

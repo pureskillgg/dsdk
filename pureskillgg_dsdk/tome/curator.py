@@ -6,6 +6,13 @@ import structlog
 import pandas as pd
 
 from .header_tome import create_header_tome_from_fs, create_subheader_tome_from_fs
+from .builder import (
+    DEFAULT_MAX_PAGE_SIZE_MB,
+    DEFAULT_READ_THREADS,
+    DEFAULT_TOME_NAME,
+    BasicTomes,
+    build_basic_tomes_from_fs,
+)
 
 from .loader import TomeLoader
 from .scribe import TomeScribe
@@ -143,6 +150,116 @@ class TomeCuratorFs:
             selector=selector,
             tome_collection_root_path=self._tome_collection_root_path,
             compression=compression,
+            log=self._log,
+        )
+
+    def build_basic_tomes(
+        self,
+        channels: List[str | ChannelInstruction],
+        /,
+        *,
+        tome_name: str = DEFAULT_TOME_NAME,
+        header_tome_name: str = None,
+        keys: List[str] = None,
+        max_page_size_mb: float | None = DEFAULT_MAX_PAGE_SIZE_MB,
+        compression: str | None = DEFAULT_PAGE_COMPRESSION,
+        read_threads: int = DEFAULT_READ_THREADS,
+        behavior_if_complete: str = "pass",
+        behavior_if_partial: str = "overwrite",
+    ) -> BasicTomes:
+        """
+        Build the header tome and one tome per channel, visiting each match once.
+
+        The same tomes as `create_header_tome`, then for each channel a
+        subheader of the matches that have it and a `make_tome` over that
+        subheader with each match's rows tagged ``match_key``, but faster:
+        each match is visited once, for its manifest, its ``header`` row and
+        all of its channels, read with pyarrow.
+
+        A channel's tome holds the matches that have the channel, in header
+        order, and its header copy is their header rows. Nothing else is
+        written: make any other subheader (all matches, one map, one
+        platform) from the header with `create_subheader_tome`.
+
+        Tomes are written to a staging folder, ``tome/<ds_type>/.building``,
+        during the walk, and moved to their names at the end, once the
+        header's dates are known. An interrupted build leaves no partial
+        channel tome, and the next call starts over.
+
+        Parameters
+        ----------
+        channels : list of str or ChannelInstruction
+            The channels to build a tome for. An instruction,
+            ``{"channel": ..., "columns": [...]}``, reads only those
+            columns, as in `make_tome`.
+        tome_name : str, default="basic_{channel}.{dates}"
+            Name of each channel's tome. ``{channel}`` is the channel, and
+            ``{dates}`` the first and last day of the header's
+            ``match_date``, as ``yyyy-mm-dd,yyyy-mm-dd``.
+        header_tome_name : str, default=`default_header_name`
+            The header tome to write, or to use if it is complete.
+        keys : list of str, default=every match in the ds collection
+            Manifest keys of the matches to build over, as in a header
+            tome's ``key`` column, when the header is built. A complete
+            header that is kept must hold the same matches.
+        max_page_size_mb : float or None, default=256
+            A page is cut once its tables pass this many MB of Arrow
+            buffers. That counts strings by their bytes, so a page holds
+            more rows than a `make_tome` page of the same size, which counts
+            pandas' in-memory size. None writes one page per tome.
+        compression : str or None, default="zstd"
+            Parquet codec for the pages, as in `make_tome`.
+        read_threads : int, default=4
+            Threads that read matches ahead of the writer. Tomes list the
+            matches in header order whatever the count, and pages come out
+            the same. 0 or 1 reads each match in turn. Reading from a hard
+            disk, write the tomes to a different disk.
+        behavior_if_complete : {"pass", "overwrite", "fail"}
+            For a complete header or channel tome: keep it, build it again,
+            or raise. Overwriting the header rescans the collection.
+        behavior_if_partial : {"overwrite", "pass", "fail"}
+            For a partial header or channel tome, such as one `make_tome`
+            left: build it again, leave it, or raise. A partial header is
+            built again unless "fail".
+
+        Returns
+        -------
+        BasicTomes
+            Loaders for the header and each channel's tome, and the
+            ``{dates}`` value.
+
+        Notes
+        -----
+        A complete tome is kept, so a call whose tomes are all complete
+        reads no match. When the header is built, the channel tomes' names
+        are known only at the end, so a "fail" for an existing channel tome
+        is raised after the walk.
+
+        A key listed twice, or declared by two manifests, is built once, and
+        the count dropped is logged. Pages carry pandas metadata, so
+        `TomeLoader` gives the dtypes a `make_tome` tome would: a column is
+        ``Int64`` when any match's file declares it so. When pyarrow can't
+        join a page's tables into those dtypes, that page is built with
+        pandas.
+        """
+        header_name = (
+            header_tome_name
+            if header_tome_name is not None
+            else self._default_header_name
+        )
+        return build_basic_tomes_from_fs(
+            channels,
+            tome_name=tome_name,
+            header_tome_name=header_name,
+            keys=keys,
+            ds_type=self._ds_type,
+            tome_collection_root_path=self._tome_collection_root_path,
+            ds_collection_root_path=self._ds_collection_root_path,
+            max_page_size_mb=max_page_size_mb,
+            compression=compression,
+            read_threads=read_threads,
+            behavior_if_complete=behavior_if_complete,
+            behavior_if_partial=behavior_if_partial,
             log=self._log,
         )
 
