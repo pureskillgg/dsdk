@@ -206,7 +206,9 @@ class TomeCuratorFs:
             A page is cut once its tables pass this many MB of Arrow
             buffers. That counts strings by their bytes, so a page holds
             more rows than a `make_tome` page of the same size, which counts
-            pandas' in-memory size. None writes one page per tome.
+            pandas' in-memory size. Every channel fills a page at once, so
+            memory peaks near this times the number of channels. None
+            writes one page per tome.
         compression : str or None, default="zstd"
             Parquet codec for the pages, as in `make_tome`.
         read_threads : int, default=4

@@ -243,7 +243,8 @@ def drift_collection(tmp_path):
         },
         day=17,
     )
-    stored_index = deaths(10, 5).set_axis(range(100, 110))
+    # A stored index: pandas writes it as the column __index_level_0__.
+    stored_index = deaths(10, 5).set_axis(np.arange(100, 120, 2))
     write_match(
         root,
         "m05",
@@ -326,6 +327,11 @@ def test_drifting_schemas_equal_make_tome(
     assert dtypes["round"] == "Int64"
     assert dtypes["player_id_fixed"] == "float64"
     assert dtypes["assister_id"] == "Int64"
+    stored = os.path.join(str(drift_collection), *"csds/2022/05/18/m05".split("/"))
+    assert (
+        "__index_level_0__"
+        in pq.read_schema(os.path.join(stored, "player_death")).names
+    )
     assert "__index_level_0__" not in deaths_frame.columns
     # The match without the channel is left out; the empty one is kept.
     keys = built.tomes["player_death"].get_keyset()
