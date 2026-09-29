@@ -343,6 +343,38 @@ def test_gzip_tome_continued_with_zstd_reads_whole(tmp_path):
     )
 
 
+def test_get_dataframe_has_one_index_across_pages(tmp_path):
+    curator = create_curator_instance(tmp_path)
+    create_complete_tome(curator)
+
+    df = curator.get_dataframe(continued_tome_name)
+
+    keyset = curator.get_keyset(sub_header_name)
+    assert len(curator.get_manifest(continued_tome_name)["pages"]) == 2
+    pd.testing.assert_index_equal(df.index, pd.RangeIndex(len(df)))
+    pd.testing.assert_frame_equal(df, read_round_ends(keyset))
+
+
+def test_get_dataframe_passes_columns_and_library(tmp_path):
+    curator = create_curator_instance(tmp_path)
+    create_complete_tome(curator)
+    expected = read_round_ends(curator.get_keyset(sub_header_name))
+
+    df = curator.get_dataframe(continued_tome_name, columns=["tick", "round"])
+    pd.testing.assert_frame_equal(df, expected[["tick", "round"]])
+
+    pl = pytest.importorskip("polars")
+    df = curator.get_dataframe(
+        continued_tome_name, columns=["tick", "round"], library="polars"
+    )
+    assert isinstance(df, pl.DataFrame)
+    assert df.columns == ["tick", "round"]
+    assert df["tick"].to_list() == expected["tick"].tolist()
+    lazy = curator.scan(continued_tome_name)
+    assert isinstance(lazy, pl.LazyFrame)
+    assert lazy.select(pl.len()).collect().item() == len(expected)
+
+
 def test_get_random_match(tmp_path):
     tmp_path = str(tmp_path)
     curator = create_curator_instance(tmp_path)

@@ -5,16 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `TomeCuratorFs.build_basic_tomes(channels)` (and `build_basic_tomes_from_fs`) builds the header tome and one tome per channel in one walk: each match is visited once, for its manifest, its header row and every channel, read with pyarrow by 4 threads. Each channel's tome holds the matches that have the channel, with their rows tagged `match_key`, and loads with the same values and dtypes as a `make_tome` tome over a subheader of those matches. A match key listed twice is built once. Complete tomes are kept, so a rerun reads nothing; an interrupted build leaves no partial channel tome and starts over.
+- `TomeWriterFs.write_page` also takes a `pyarrow.Table`.
+
 ## 3.3.0
 
 ### Added
 
 - `compression` argument on `make_tome`, `create_header_tome`, `create_subheader_tome` and `TomeWriterFs`: the parquet codec for new tome pages. It takes any codec `DataFrame.to_parquet` accepts, and an unknown one fails before any page is written.
-- `TomeCuratorFs.build_basic_tomes(channels)` (and `build_basic_tomes_from_fs`) builds the header tome and one tome per channel in one walk: each match is visited once, for its manifest, its header row and every channel, read with pyarrow by 4 threads. Each channel's tome holds the matches that have the channel, with their rows tagged `match_key`, and loads with the same values and dtypes as a `make_tome` tome over a subheader of those matches. A match key listed twice is built once. Complete tomes are kept, so a rerun reads nothing; an interrupted build leaves no partial channel tome and starts over.
-- `TomeWriterFs.write_page` also takes a `pyarrow.Table`.
+- `columns` argument on `TomeLoader.get_dataframe` and `TomeCuratorFs.get_dataframe`: read only these columns, in this order.
+- A `polars` extra, `pureskillgg-dsdk[polars]`. With it, `get_dataframe(library="polars")` returns a polars DataFrame, and `TomeLoader.scan()` and `TomeCuratorFs.scan()` return a LazyFrame, so a query reads only the columns and rows it needs. Old pages' pandas index column is dropped, and pages whose columns differ are joined with `pl.concat(how="diagonal_relaxed")`. Without the extra, these raise an `ImportError` that names it.
 
 ### Changed
 
+- **The pandas frame from `get_dataframe` has one `RangeIndex`, 0 to n - 1.** Before, each page's index was repeated, so the same labels came back once per page, and pages written by dsdk 3.2.1 and earlier restored the index they stored. The old index is not kept as a column. Code that picked rows of a tome frame by label (`.loc`) should pick them by position.
+- `get_dataframe` reads a tome's pages with one pyarrow dataset scan and converts them to pandas once, instead of reading each page with `pd.read_parquet` and joining them with `pd.concat`. A 6.1M-row tome loads 2.0x faster on pandas 2.3 and 2.8x on pandas 3 with the files cached. Values and dtypes are unchanged. A column whose type differs between pages (beyond `int64` against `Int64`, or `int64` against `float64`), or that some pages lack, is still read page by page and joined with `pd.concat`, so it keeps the dtype it had.
 - New tome pages are written with zstd instead of gzip. pyarrow writes gzip at level 9, which was about 95% of the time to build a large tome: a 17.4M-row page writes in 5 s with zstd against 119 s with gzip, and is 4% smaller. Pass `compression="gzip"` for the old format. Existing gzip tomes read unchanged, and a tome continued with a different codec reads back whole.
 - The `max_page_size_mb` check measures only the frames added since the previous check, not the whole page every time; when new frames change the page's columns or dtypes, it measures the whole page as before. Pages split at the same points; the measure now leaves out the page's index (about 130 bytes).
 

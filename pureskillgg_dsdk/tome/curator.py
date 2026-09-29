@@ -1,7 +1,7 @@
 import os
 import random
 import warnings
-from typing import List
+from typing import TYPE_CHECKING, List, Literal, Optional, Sequence, overload
 import structlog
 import pandas as pd
 
@@ -24,6 +24,9 @@ from .header_copier_fs import HeaderTomeCopierFs
 from .constants import DEFAULT_PAGE_COMPRESSION, warn_if_invalid_tome_name
 
 from ..ds_io import ChannelInstruction, DsReaderFs, GameDsLoader
+
+if TYPE_CHECKING:
+    import polars as pl
 
 
 class TomeCuratorFs:
@@ -265,9 +268,49 @@ class TomeCuratorFs:
             log=self._log,
         )
 
-    def get_dataframe(self, tome_name: str) -> pd.DataFrame:
+    @overload
+    def get_dataframe(
+        self,
+        tome_name: str,
+        *,
+        columns: Optional[Sequence[str]] = None,
+        library: Literal["pandas"] = "pandas",
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_dataframe(
+        self,
+        tome_name: str,
+        *,
+        columns: Optional[Sequence[str]] = None,
+        library: Literal["polars"],
+    ) -> "pl.DataFrame": ...
+
+    def get_dataframe(self, tome_name, *, columns=None, library="pandas"):
         """
         Get the dataframe from a tome.
+
+        Parameters
+        ----------
+        tome_name : str
+            Name of the tome.
+        columns : list of str, default=None
+            Columns to read, in this order. None reads every column.
+        library : {"pandas", "polars"}, default="pandas"
+            "polars" returns a polars DataFrame, and needs the ``polars``
+            extra (``pureskillgg-dsdk[polars]``).
+
+        Returns
+        -------
+        pd.DataFrame or pl.DataFrame
+            The tome's data. A pandas frame has one ``RangeIndex``.
+        """
+        loader = self.get_loader(tome_name)
+        return loader.get_dataframe(columns=columns, library=library)
+
+    def scan(self, tome_name: str) -> "pl.LazyFrame":
+        """
+        Scan a tome as a polars LazyFrame. Needs the ``polars`` extra.
 
         Parameters
         ----------
@@ -276,11 +319,10 @@ class TomeCuratorFs:
 
         Returns
         -------
-        pd.DataFrame
-            Pandas dataframe containing the tome's data.
+        pl.LazyFrame
+            The tome's data, read only as far as a query needs.
         """
-        loader = self.get_loader(tome_name)
-        return loader.get_dataframe()
+        return self.get_loader(tome_name).scan()
 
     def get_keyset(self, tome_name: str) -> list:
         """
