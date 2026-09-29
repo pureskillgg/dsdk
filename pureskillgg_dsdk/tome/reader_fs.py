@@ -83,15 +83,17 @@ class TomeReaderFs:
         return list(df.iloc[:, 0])
 
     def read_page_dataframe(self, page):
-        key = self._get_page_key("dataframe", page)
-
-        content_type = page["dataframe"]["contentType"]
-        if content_type != "application/x-parquet":
-            raise Exception(f"Unsupported content type {content_type}")
-
+        key = self.get_page_dataframe_path(page)
         self._log.info("Read Dataframe: Start", page_number=page["number"])
         df = pd.read_parquet(key)
         return df
+
+    def get_page_dataframe_path(self, page):
+        """Path of a page's dataframe parquet file."""
+        content_type = page["dataframe"]["contentType"]
+        if content_type != "application/x-parquet":
+            raise Exception(f"Unsupported content type {content_type}")
+        return self._get_page_key("dataframe", page)
 
     def _get_page_key(self, subtype, page):
         return get_page_path_fs(self._root_path, subtype, page)
