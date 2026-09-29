@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `TomeCuratorFs.build_basic_tomes(channels)` (and `build_basic_tomes_from_fs`) builds the header tome and one tome per channel in one walk: each match is visited once, for its manifest, its header row and every channel, read with pyarrow by 4 threads. Each channel's tome holds the matches that have the channel, with their rows tagged `match_key`, and loads with the same values and dtypes as a `make_tome` tome over a subheader of those matches. A match key listed twice is built once. Complete tomes are kept, so a rerun reads nothing; an interrupted build leaves no partial channel tome and starts over.
+- `TomeWriterFs.write_page` also takes a `pyarrow.Table`.
+
 ## 3.3.0
 
 ### Added

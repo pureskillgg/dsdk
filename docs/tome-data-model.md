@@ -50,6 +50,8 @@ Kinds of tome:
   `create_subheader_tome`.
 - **Data tome** — the actual training data. `make_tome` iterates a header's
   keyset and concatenates per-channel DataFrames into pages.
+- **Basic tomes** — the header and one data tome per channel, rows tagged
+  `match_key`, built in one go by `build_basic_tomes` (below).
 
 Reading back:
 
@@ -120,6 +122,75 @@ on a header also holds a copy of that header under `header/`.
   tomes read unchanged, and a tome continued with a different codec (for
   example a gzip tome continued with the zstd default) reads back whole.
   pyarrow, polars and DuckDB all read zstd parquet.
+
+## build_basic_tomes: the header and a tome per channel
+
+`TomeCuratorFs.build_basic_tomes(channels)` builds what `create_header_tome`
+and a loop of `make_tome` calls would, one per channel over a subheader of the
+matches that have it, but visits each match once:
+
+```python
+built = curator.build_basic_tomes(["player_death", "round_end"], max_page_size_mb=256)
+built.header                  # TomeLoader of the header tome
+built.tomes["player_death"]   # TomeLoader of basic_player_death.<dates>
+built.dates                   # "2023-11-10,2026-07-10": the header's match_date range
+```
+
+- **One walk.** For each match the builder reads the manifest, the `header`
+  channel (when it builds the header) and every requested channel, with
+  `pyarrow.parquet.read_table`. A loop of `make_tome` calls reads each
+  manifest once per channel, plus once for the header and once to find which
+  matches have which channels.
+- **Names.** `tome_name` (default `basic_{channel}.{dates}`) names each
+  channel's tome; `{dates}` is the first and last day of the header's
+  `match_date`. `header_tome_name` defaults to the curator's default header.
+  When the builder builds the header, the dates are known only once every
+  match is read, so the channel tomes are written to a staging folder,
+  `tome/<ds_type>/.building/<header name>/<channel>`, and moved to their
+  names at the end (a rename on the same disk). Each gets its header copy
+  before its manifest is marked complete.
+- **Contents.** A channel's tome holds the matches that have the channel, in
+  header order, and its header copy is their header rows. A match whose file
+  is empty is in the keyset with no rows, as with `make_tome`. A channel no
+  match has gets no tome. Only the header and the channel tomes are written;
+  make other subheaders (all matches, a map, a platform) from the header with
+  `create_subheader_tome`.
+- **Keys.** `keys=` builds over those matches instead of every match in the
+  collection. A key listed twice, or two manifests declaring the same key, is
+  built once, and the count dropped is logged.
+- **Pages.** A page is cut after the match that takes its tables past
+  `max_page_size_mb` (default 256) of Arrow buffers, `Table.nbytes`. That
+  counts a string by its bytes, where `make_tome` counts pandas' in-memory
+  size, so builder pages hold more rows for the same setting. The header is
+  one page, as `create_header_tome` writes it. Pages are zstd by default
+  (`compression=`).
+- **dtypes.** pyarrow joins a page's tables with
+  `concat_tables(promote_options="permissive")`: int64 with double becomes
+  double, null-typed columns take the other files' type, and missing columns
+  are filled with nulls. The page's pandas metadata names the dtype
+  `pd.concat` gives the same matches' frames, so `TomeLoader` restores what a
+  `make_tome` page gives: a column is `Int64` when any match's file declares
+  `Int64`, even though some csds versions declare the id columns `int64`.
+  The builder works this out from two-row stand-ins of each distinct file
+  schema, and checks that the joined page reads back with those dtypes. When
+  it doesn't, or pyarrow can't join the tables (categories that differ, for
+  example), that page is built with `pd.concat`, as `make_tome` would, and
+  the builder logs "Page built with pandas".
+- **Threads.** `read_threads` (default 4) threads read whole matches ahead
+  of the writer; results are used in key order, so pages come out the same
+  for any count. 0 or 1 reads inline. On a USB hard disk 4 threads read
+  about 1.5x faster than 1, and 8 no faster. Write the tomes to a different
+  disk from the collection: writing to the disk being read slows the writes
+  several times over.
+- **Resuming.** A complete tome is kept (`behavior_if_complete="pass"`), so
+  a call whose tomes are all complete reads no match; `"overwrite"` builds it
+  again (for the header, by rescanning the collection) and `"fail"` raises.
+  An interrupted build leaves no partial channel tome, only its staging
+  folder and a partial header, and the next call starts over. A partial tome,
+  such as one an interrupted `make_tome` left, is built again by default
+  (`behavior_if_partial="overwrite"`), or left (`"pass"`), or raises
+  (`"fail"`). There is no "continue": the build is one walk, so continuing
+  one tome would mean reading every match again anyway.
 
 ## make_tome resume / overwrite state machine
 
