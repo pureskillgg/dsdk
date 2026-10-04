@@ -107,15 +107,25 @@ Warm loads, median of 3, on the maintainer's machine:
 ## Column types: old and compact csds
 
 csgo-ppp's compact player tables (`player_vector` and `player_status`) store
-integers as int8, int16 or int32, floats as float32 and `place_name` as a
-dictionary, without pandas metadata. Files written before them store int64,
-float64 and strings. Older files also hold some flags (`burst_mode` and
-`is_silenced` in `player_status`, and flags in `player_death`, `other_death`
-and `bomb_defuse`) as 0 and 1 in int64 columns declared `Int64`, where newer
+integers as int8, int16 or int32, the floats read from the demo as float32
+and `place_name` as a dictionary. The motion columns csgo-ppp derives
+(speeds, velocities, movement angles) stay float64. The files' pandas
+metadata names these types: pandas reads an integer as the nullable type of
+its width (`Int8`, `Int16` or `Int32`), `tick` as numpy `int32`,
+`burst_mode` and `is_silenced` as the nullable `boolean`, and `place_name`
+as a category. Files written before them store int64, float64 and strings.
+Older files also hold some flags (`burst_mode` and `is_silenced` in
+`player_status`, and flags in `player_death`, `other_death` and
+`bomb_defuse`) as 0 and 1 in int64 columns declared `Int64`, where newer
 ones hold bool. A tome can hold all of these, and loads them as follows.
 
-- **A tome of compact files only** loads the narrow types: numpy `int8`,
-  `int16`, `int32` and `float32` in pandas, `Int8` to `Float32` in polars.
+- **A tome of compact files only** loads the types pandas reads from them:
+  `Int8`, `Int16` and `Int32`, numpy `int32` for `tick`, `float32` and
+  `float64`, and `boolean` for `burst_mode` and `is_silenced`, with
+  `place_name` decoded to strings (see "Categories" below). polars loads
+  `Int8` to `Int32`, `Float32` and `Float64`. Compact files without pandas
+  metadata load numpy `int8`, `int16`, `int32` and `bool` in pandas
+  instead.
 - **A tome that mixes old and compact files is narrowed, not widened.**
   Where some matches or pages hold a column as int64 or float64 and others
   as a narrower type, the wide values are cast to the narrow type: integers
@@ -139,18 +149,18 @@ ones hold bool. A tome can hold all of these, and loads them as follows.
   change values. A tome of compact files only loads it as int16.
 - **Values don't change, except float32 rounding.** A float64 narrowed to
   float32 is rounded to the nearest float32. csgo-ppp's raw floats came from
-  the demo as float32, so they convert back exactly; its derived columns
-  (speeds, velocities, movement angles) were computed in float64, and move by
-  at most about 6 parts in 100 million, as they do in the compact files.
-- **pandas dtypes.** A narrowed column keeps the nullability its file
-  declared: old files declare most integer columns `Int64`, so a mixed tome
-  loads those as `Int8`, `Int16` or `Int32`, where a tome of compact files
-  only loads numpy `int8`, `int16` or `int32`. An integer column with missing
-  values, because some matches lack it (`player_controller_id` in some 2023
-  files) or it holds nulls, is the nullable type of its width, not float64.
-  A flag narrowed from a column declared `Int64`, or one with missing
-  values, is the nullable `boolean`; a missing value stays missing. polars
-  has no such split; its narrow columns hold nulls as they are.
+  the demo as float32, so they convert back exactly. Its derived columns are
+  float64 in both formats, so they aren't narrowed.
+- **pandas dtypes.** A narrowed column keeps the nullability its files
+  declare. Old files declare most integer columns `Int64` and compact files
+  the nullable type of their width, so a mixed tome loads those as `Int8`,
+  `Int16` or `Int32`; `tick`, declared numpy `int64` and `int32`, loads as
+  numpy `int32`. An integer column with missing values, because some
+  matches lack it (`player_controller_id` in some 2023 files) or it holds
+  nulls, is the nullable type of its width, not float64. A flag narrowed
+  from a column declared `Int64` or `boolean`, or one with missing values,
+  is the nullable `boolean`; a missing value stays missing. polars has no
+  such split; its narrow columns hold nulls as they are.
 - **Narrow integers can wrap in arithmetic.** pandas and polars keep int16 in
   element-wise arithmetic, so with int16 `money`, `money * 5` gives 14,464
   for 16,000. Sums and means widen and are safe. For analysis code,
@@ -170,8 +180,11 @@ ones hold bool. A tome can hold all of these, and loads them as follows.
   doesn't fit them stops the build there. The loaders narrow across pages,
   for tomes whose pages differ, such as a `make_tome` tome continued after
   the format changed. `make_tome` joins each page's frames with `pd.concat` as before,
-  so a page that mixes old and compact matches is widened there.
-  `iterate_pages` reads each page as it is.
+  so a page that mixes old and compact matches is widened there. A page
+  that joins an old file's 0/1 flag with a bool one can't be written:
+  `pd.concat` makes an object column of ints and bools, which pyarrow
+  refuses, as it did before compact files. `build_basic_tomes` builds such
+  tomes. `iterate_pages` reads each page as it is.
 
 ## Page storage
 
