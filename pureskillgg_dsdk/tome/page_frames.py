@@ -546,6 +546,7 @@ def _polars_type(polars, data_type):
         pa.int8(): polars.Int8,
         pa.int16(): polars.Int16,
         pa.int32(): polars.Int32,
+        pa.int64(): polars.Int64,
         pa.float32(): polars.Float32,
         pa.bool_(): polars.Boolean,
     }[data_type]

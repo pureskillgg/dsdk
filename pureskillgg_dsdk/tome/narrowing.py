@@ -47,7 +47,7 @@ import pyarrow.compute as pc
 
 # Never narrowed. current_ammo is int16 in the new files, but older files
 # hold 4294967295 for an empty magazine, which int16 can't hold; dsdk doesn't
-# change values, so a mixed tome keeps it int64.
+# change values, so a mixed tome keeps it int64, on every page.
 KEEP_WIDE = frozenset({"current_ammo"})
 
 NARROW_INTS = (pa.int8(), pa.int16(), pa.int32())
@@ -74,11 +74,16 @@ def narrow_target(name, types):
     """
     The type to narrow column `name` to, given its types in the tables being
     joined, or None when it is joined as before. Null-typed columns (all
-    missing) don't count.
+    missing) don't count. A column in `KEEP_WIDE` that is int64 in some
+    tables and a narrower integer in others gets int64 instead: the narrow
+    ones are widened, exactly, so every page holds the same type.
     """
-    if name in KEEP_WIDE:
-        return None
     present = {data_type for data_type in types if not pa.types.is_null(data_type)}
+    if name in KEEP_WIDE:
+        mixed = pa.int64() in present and len(present) > 1
+        if mixed and all(pa.types.is_signed_integer(t) for t in present):
+            return pa.int64()
+        return None
     narrow = [data_type for data_type in present if data_type in NARROW_INTS]
     target = None
     if pa.bool_() in present:

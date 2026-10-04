@@ -133,9 +133,10 @@ ones hold bool. A tome can hold all of these, and loads them as follows.
   `build_basic_tomes` raises it during the build, naming the match; the
   loaders raise it when they read a tome whose pages differ, naming the page
   and row, and the match when the page has a `match_key` column.
-- **`current_ammo` stays int64** in a mixed tome. Older files hold
-  4294967295 there for an empty magazine, which int16 can't hold, and dsdk
-  doesn't change values. A tome of compact files only loads it as int16.
+- **`current_ammo` stays int64** in a mixed tome, on every page: the compact
+  files' int16 is widened to it, which is exact. Older files hold 4294967295
+  there for an empty magazine, which int16 can't hold, and dsdk doesn't
+  change values. A tome of compact files only loads it as int16.
 - **Values don't change, except float32 rounding.** A float64 narrowed to
   float32 is rounded to the nearest float32. csgo-ppp's raw floats came from
   the demo as float32, so they convert back exactly; its derived columns

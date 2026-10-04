@@ -239,9 +239,12 @@ def test_a_mixed_tome_holds_the_compact_types(tmp_path, sources):
         for page in loader.manifest["pages"]:
             path = get_page_path_fs(str(tmp_path / "tomes"), "dataframe", page)
             schema = pq.read_schema(path)
+            if channel == "player_vector":
+                # current_ammo stays wide, on every page, the compact one too.
+                assert schema.field("current_ammo").type == pa.int64()
             for field in compact_schema:
                 if field.name in ("current_ammo", "place_name"):
-                    # current_ammo stays wide; place_name is decoded.
+                    # current_ammo is checked above; place_name is decoded.
                     continue
                 if field.name == "player_controller_id" and page["number"] == 0:
                     # The old match lacks it.
@@ -253,10 +256,16 @@ def test_a_mixed_tome_holds_the_compact_types(tmp_path, sources):
                     field.name,
                 )
     # Each tome's old page was written wide, then narrowed once the compact
-    # matches turned up.
-    narrowed = log.named("Page narrowed")
-    assert sorted(kw["tome"].rsplit("/", 1)[-1] for kw in narrowed) == sorted(CHANNELS)
-    assert [kw["page_number"] for kw in narrowed] == [0, 0]
+    # matches turned up; player_vector's compact page gets current_ammo int64.
+    narrowed = sorted(
+        (kw["tome"].rsplit("/", 1)[-1], kw["page_number"])
+        for kw in log.named("Page narrowed")
+    )
+    assert narrowed == [
+        ("player_status", 0),
+        ("player_vector", 0),
+        ("player_vector", 2),
+    ]
     assert log.named("Page built with pandas") == []
 
 
@@ -792,7 +801,10 @@ def test_flags_of_one_format_load_as_before(tmp_path, pages):
         ("a", [pa.float64(), pa.int64(), pa.int8()], pa.int8()),
         ("a", [pa.float64(), pa.float32()], pa.float32()),
         ("a", [pa.null(), pa.int64(), pa.int32()], pa.int32()),
-        ("current_ammo", [pa.int64(), pa.int16()], None),
+        ("current_ammo", [pa.int64(), pa.int16()], pa.int64()),
+        ("current_ammo", [pa.int16()], None),
+        ("current_ammo", [pa.int64()], None),
+        ("current_ammo", [pa.int64(), pa.float64()], None),
         ("a", [pa.int64()], None),
         ("a", [pa.int8(), pa.int16()], None),
         ("a", [pa.int64(), pa.float64()], None),
