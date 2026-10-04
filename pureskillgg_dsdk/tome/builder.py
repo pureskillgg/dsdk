@@ -8,6 +8,8 @@ channel together, with pyarrow, and pages each channel's rows into its own
 tome.
 """
 
+# pylint: disable=too-many-lines
+
 import functools
 import json
 import os
@@ -20,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import islice
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -30,6 +33,7 @@ from ..ds_io import DsReaderFs
 from ..ds_io.normalize_instructions import normalize_instructions
 from .constants import (
     DEFAULT_PAGE_COMPRESSION,
+    MATCH_KEY_COLUMN,
     filter_ds_reader_logs,
     get_page_path_fs,
     make_key,
@@ -38,13 +42,23 @@ from .constants import (
 from .header_tome import create_subheader_tome_from_fs, get_manifest_key_paths_from_glob
 from .loader import TomeLoader
 from .manifest import TomeManifest
+from .narrowing import (
+    NarrowingError,
+    flag_columns,
+    missing_as_nullable,
+    narrow_table,
+    plan_narrowing,
+    resolved_narrow_int,
+    type_name,
+)
 from .reader_fs import TomeReaderFs
 from .writer_fs import TomeWriterFs, ensure_dir
 
 DEFAULT_TOME_NAME = "basic_{channel}.{dates}"
 DEFAULT_MAX_PAGE_SIZE_MB = 256
 DEFAULT_READ_THREADS = 4
-MATCH_KEY_COLUMN = "match_key"
+# The header tome's rows are keyed by this column, a channel tome's by match_key.
+HEADER_KEY_COLUMN = "key"
 BEHAVIORS_IF_COMPLETE = ("pass", "overwrite", "fail")
 BEHAVIORS_IF_PARTIAL = ("overwrite", "pass", "fail")
 # Tomes are written here during the walk, and moved to their names at the end.
@@ -57,6 +71,8 @@ _PARQUET = "application/x-parquet"
 _COMPACT_EVERY = 256
 _STATUS_EVERY = 1000
 _ARROW_ERRORS = (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError)
+# Narrow types a later match may still widen to int16 or int32.
+_MAY_WIDEN = (pa.int8(), pa.int16())
 
 
 @dataclass(frozen=True)
@@ -170,7 +186,7 @@ class _Build:
         self._writer = TomeWriterFs(
             root_path=tome_root, compression=compression, log=self._log
         )
-        self._proxies = {}  # table signature -> small pandas frame of its dtypes
+        self._proxies = _Proxies()
         self._header_keys = []
 
     def run(self) -> BasicTomes:
@@ -306,7 +322,9 @@ class _Build:
             if "header" not in by_name:
                 raise Exception("Channel header not found in replay.")
             table = read_channel(self._channel_path(by_name["header"]), None, "header")
-            row = prepare_table(table, [("key", key), ("match_id", manifest["id"])])
+            row = prepare_table(
+                table, [(HEADER_KEY_COLUMN, key), ("match_id", manifest["id"])]
+            )
         tables = []
         for channel in channels:
             if channel not in by_name:
@@ -337,6 +355,8 @@ class _Build:
             # A header tome is one page, as create_header_tome writes it.
             max_page_size_mb=None if is_header else self._max_page_size_mb,
             proxies=self._proxies,
+            key_column=HEADER_KEY_COLUMN if is_header else MATCH_KEY_COLUMN,
+            tome_root=self._tome_root,
             log=self._log,
         )
 
@@ -421,20 +441,41 @@ class _ArrowScribe:
 
     A page is cut when its buffered tables pass ``max_page_size_mb`` of Arrow
     buffers (``Table.nbytes``), checked after every match.
+
+    When the matches mix wide and narrow column types (see `narrowing`), each
+    page is narrowed as it is built. A page written before the narrow types
+    turned up is narrowed and written again when the tome is finished, so
+    every page holds the tome's types.
     """
 
-    def __init__(self, *, manifest, writer, max_page_size_mb, proxies, log):
+    def __init__(
+        self,
+        *,
+        manifest,
+        writer,
+        max_page_size_mb,
+        proxies,
+        key_column,
+        tome_root,
+        log,
+    ):
         self._manifest = manifest
         self._writer = writer
         self._max_bytes = (
             None if max_page_size_mb is None else max_page_size_mb * 1024 * 1024
         )
         self._proxies = proxies
+        self._key_column = key_column
+        self._tome_root = tome_root
         self._log = log
         self._page_counter = 0
-        self._page = _Page(proxies)
+        self._page = _Page(proxies, key_column)
+        # Every table signature the tome holds, and each written page's keys.
+        self._signatures = set()
+        self._page_keys = []
         self.keys = []
         self.pandas_pages = 0
+        self.narrowed_pages = 0
 
     @property
     def key_count(self) -> int:
@@ -451,6 +492,8 @@ class _ArrowScribe:
     def add(self, key, prepared):
         """Add one match: its key, and its rows as (table, signature) or None."""
         self.keys.append(key)
+        if prepared is not None:
+            self._signatures.add(prepared[1])
         self._page.add(key, prepared)
         if self._max_bytes is not None and self._page.nbytes > self._max_bytes:
             self._write()
@@ -460,13 +503,14 @@ class _ArrowScribe:
             raise Exception("Empty Tome not supported")
         if len(self._page.keys) > 0:
             self._write()
+        self._narrow_written_pages()
         self._manifest.finish()
         self._writer.write_manifest(self._manifest.get())
 
     def _write(self):
         data = self._page.table()
         if data is None:
-            data = pandas_page(self._page.items)
+            data = self._page.frame()
             if len(self._page.items) > 0:
                 self.pandas_pages += 1
                 self._log.info(
@@ -477,16 +521,52 @@ class _ArrowScribe:
         page = self._manifest.end_page(self._page_counter)
         self._writer.write_page(page, data, self._page.keys)
         self._writer.write_manifest(self._manifest.get())
+        self._page_keys.append(self._page.keys)
         self._page_counter += 1
-        self._page = _Page(self._proxies)
+        self._page = _Page(self._proxies, self._key_column)
         self._manifest.start_page()
+
+    def _narrow_written_pages(self):
+        """
+        Write again, at the tome's types, the pages that hold a column the
+        tome narrows at another type: wide, because the page was written
+        before a match with the narrow type or holds a value its matches'
+        narrow type can't, or narrower, because a later match brought a wider
+        narrow type. A value that doesn't fit the tome's type raises here.
+        """
+        plan = plan_narrowing(signature[0] for signature in self._signatures)
+        if not plan:
+            return
+        for page, keys in zip(self._manifest.get()["pages"], self._page_keys):
+            path = get_page_path_fs(self._tome_root, "dataframe", page)
+            schema = pq.read_schema(path)
+            differ = {
+                name: target
+                for name, target in plan.items()
+                if name in schema.names
+                and schema.field(name).type != target
+                and not pa.types.is_null(schema.field(name).type)
+            }
+            if not differ:
+                continue
+            table = pq.read_table(path)
+            table = narrow_table(table, differ, describe_rows(table, self._key_column))
+            self._writer.write_page(page, table, keys)
+            self.narrowed_pages += 1
+            self._log.info(
+                "Page narrowed",
+                tome=self._manifest.get()["tome"],
+                page_number=page["number"],
+                columns=sorted(differ),
+            )
 
 
 class _Page:
     """The tables and keys of the page being filled."""
 
-    def __init__(self, proxies):
+    def __init__(self, proxies, key_column):
         self._proxies = proxies
+        self._key_column = key_column
         self.keys = []
         self._blocks = []  # merged tables, their pandas dtypes resolved
         self._block_bytes = 0
@@ -509,8 +589,7 @@ class _Page:
         if prepared is None:
             return
         table, table_signature = prepared
-        if table_signature not in self._proxies:
-            self._proxies[table_signature] = proxy_frame(table)
+        self._proxies.add(table_signature, table)
         self._tail.append(table)
         self._tail_bytes += table.nbytes
         self._tail_signatures.add(table_signature)
@@ -522,12 +601,18 @@ class _Page:
         """The page as one table, or None when pandas must build it."""
         if len(self.items) == 0 or self._pandas_only:
             return None
-        return realize(self.items, self._signatures, self._proxies)
+        return realize(self.items, self._signatures, self._proxies, self._key_column)
+
+    def frame(self):
+        """The page built with pandas, as make_tome builds it, but narrowed."""
+        return pandas_page(self.items, self._signatures, self._key_column)
 
     def _compact(self):
         if self._pandas_only:
             return
-        block = realize(self._tail, self._tail_signatures, self._proxies)
+        block = realize(
+            self._tail, self._tail_signatures, self._proxies, self._key_column
+        )
         if block is None:
             # pandas will build the page; keep the tables as read.
             self._pandas_only = True
@@ -572,9 +657,16 @@ def prepare_table(table, columns):
     """
     A channel table ready for a page, as (table, signature), or None if empty.
 
-    Drops the stored pandas index (``make_tome`` pages discard it too) and
-    sets each of ``columns``, (name, string value) pairs, on every row, in
-    place when the column exists, as ``df[name] = value`` would.
+    Drops the stored pandas index (``make_tome`` pages discard it too),
+    decodes dictionary columns to their values, and sets each of
+    ``columns``, (name, string value) pairs, on every row, in place when the
+    column exists, as ``df[name] = value`` would.
+
+    A dictionary column (a pandas category, such as ``place_name`` in the
+    compact player_status) is decoded so that pyarrow can join it with the
+    same column of other matches, which hold other dictionaries or plain
+    strings. pandas reads it as strings, as ``pd.concat`` gives categories
+    that differ between matches.
     """
     if table.num_rows == 0:
         return None
@@ -583,6 +675,7 @@ def prepare_table(table, columns):
     drop = [n for n in table.column_names if n == _INDEX_COLUMN or n in index]
     if drop:
         table = table.drop_columns(drop)
+    table, decoded = decode_dictionaries(table)
     for name, value in columns:
         column = pa.repeat(pa.scalar(value, pa.string()), table.num_rows)
         if name in table.column_names:
@@ -590,12 +683,38 @@ def prepare_table(table, columns):
         else:
             table = table.append_column(name, column)
     metadata = prepared_metadata(
-        raw, tuple(table.column_names), tuple(name for name, _ in columns)
+        raw, tuple(table.column_names), tuple(name for name, _ in columns), decoded
     )
     table = table.replace_schema_metadata(
         None if metadata is None else {b"pandas": metadata}
     )
     return table, dtype_signature(table, metadata)
+
+
+def decode_dictionaries(table):
+    """
+    The table with each dictionary column cast to its value type, and the
+    decoded columns as (name, pandas_type, numpy_type) for their metadata.
+    """
+    decoded = []
+    for position, field in enumerate(table.schema):
+        if not pa.types.is_dictionary(field.type):
+            continue
+        value_type = field.type.value_type
+        table = table.set_column(
+            position, field.name, table.column(position).cast(value_type)
+        )
+        if pa.types.is_string(value_type) or pa.types.is_large_string(value_type):
+            decoded.append((field.name, "unicode", "object"))
+        else:
+            decoded.append(
+                (
+                    field.name,
+                    type_name(value_type),
+                    str(np.dtype(value_type.to_pandas_dtype())),
+                )
+            )
+    return table, tuple(decoded)
 
 
 @functools.lru_cache(maxsize=1024)
@@ -608,13 +727,34 @@ def index_columns(raw) -> frozenset:
 
 
 @functools.lru_cache(maxsize=1024)
-def prepared_metadata(raw, names, added):
-    """A file's pandas metadata for the columns kept and added, without index."""
+def prepared_metadata(raw, names, added, decoded=()):
+    """
+    A file's pandas metadata for the columns kept and added, without index.
+    A decoded dictionary column, (name, pandas_type, numpy_type), gets an
+    entry for its values in place of its category entry.
+    """
     if raw is None:
         return None
     meta = json.loads(raw)
     kept = set(names) - set(added)
-    columns = [c for c in meta.get("columns", []) if field_name(c) in kept]
+    values = {
+        name: (pandas_type, numpy_type) for name, pandas_type, numpy_type in decoded
+    }
+    columns = []
+    for column in meta.get("columns", []):
+        name = field_name(column)
+        if name not in kept:
+            continue
+        if name in values:
+            pandas_type, numpy_type = values[name]
+            column = {
+                "name": column.get("name", name),
+                "field_name": name,
+                "pandas_type": pandas_type,
+                "numpy_type": numpy_type,
+                "metadata": None,
+            }
+        columns.append(column)
     for name in added:
         columns.append(
             {
@@ -644,7 +784,7 @@ def dtype_signature(table, metadata) -> tuple:
     return (table.schema, metadata, nulls)
 
 
-def proxy_frame(table) -> pd.DataFrame:
+def proxy_table(table) -> pa.Table:
     """
     Two rows per column that give the dtypes pandas reads the table with.
 
@@ -661,7 +801,84 @@ def proxy_frame(table) -> pd.DataFrame:
             first = pc.index(column.is_valid(), True).as_py()
             indices = [first, None]
         columns.append(column.take(pa.array(indices, pa.int64())))
-    return pa.Table.from_arrays(columns, schema=table.schema).to_pandas()
+    return pa.Table.from_arrays(columns, schema=table.schema)
+
+
+def proxy_frame(table) -> pd.DataFrame:
+    """The two-row stand-in of a table, read by pandas."""
+    return proxy_table(table).to_pandas()
+
+
+class _Proxies:
+    """
+    The two-row stand-in of each distinct table signature, and the pandas
+    frames they give as they are or narrowed by a plan.
+    """
+
+    def __init__(self):
+        self._tables = {}
+        self._frames = {}
+
+    def add(self, signature, table):
+        if signature not in self._tables:
+            self._tables[signature] = proxy_table(table)
+
+    def frames(self, signatures, plan) -> list:
+        frames = []
+        for signature in signatures:
+            names = signature[0].names
+            relevant = tuple(
+                sorted(
+                    ((n, t) for n, t in plan.items() if n in names),
+                    key=lambda item: item[0],
+                )
+            )
+            key = (signature, relevant)
+            if key not in self._frames:
+                table = narrow_table(
+                    self._tables[signature], dict(relevant), check=False
+                )
+                self._frames[key] = table.to_pandas()
+            frames.append(self._frames[key])
+        return frames
+
+
+def describe_rows(table, key_column):
+    """Name a row of a table for a NarrowingError: by its match key if it has one."""
+
+    def describe(row):
+        if key_column in table.column_names:
+            return f"match {table.column(key_column)[row].as_py()!r}"
+        return f"row {row}"
+
+    return describe
+
+
+def narrow_items(items, signatures, key_column):
+    """
+    The page's tables, narrowed where its matches mix wide and narrow types,
+    and the plan they were narrowed by.
+
+    A value that doesn't fit int8 or int16 may still fit the wider narrow
+    type a later match brings (int16 after int8), so the page keeps that
+    column wide instead of raising. The tome's last step narrows it to the
+    tome's type, and raises there if the value doesn't fit that either.
+    Nothing wider than int32, float32 or bool can come, so those raise now.
+    """
+    plan = plan_narrowing(signature[0] for signature in signatures)
+    while plan:
+        try:
+            narrowed = [
+                narrow_table(item, plan, describe_rows(item, key_column))
+                for item in items
+            ]
+        except NarrowingError as err:
+            if plan.get(err.column) not in _MAY_WIDEN:
+                raise
+            plan = {name: t for name, t in plan.items() if name != err.column}
+            continue
+        return narrowed, plan
+    return items, plan
 
 
 def page_dtypes(frames) -> dict:
@@ -672,7 +889,7 @@ def page_dtypes(frames) -> dict:
         return dict(pd.concat(frames, ignore_index=True).dtypes)
 
 
-def realize(items, signatures, proxies):
+def realize(items, signatures, proxies, key_column=MATCH_KEY_COLUMN):
     """
     Concatenate tables into one whose pandas dtypes are make_tome's.
 
@@ -682,14 +899,24 @@ def realize(items, signatures, proxies):
     match declares Int64. Returns None when pyarrow can't concatenate the
     tables or the result doesn't read back as those dtypes; the caller then
     builds the page with pandas.
+
+    Where the matches mix wide and narrow types, the wide columns are first
+    narrowed (see `narrowing`), and a narrow integer column with missing
+    values is pandas' nullable type of its width instead of float64.
     """
+    items, plan = narrow_items(items, signatures, key_column)
     try:
         table = pa.concat_tables(items, promote_options="permissive")
     except _ARROW_ERRORS:
         return None
-    expected = page_dtypes([proxies[s] for s in signatures])
+    expected = page_dtypes(proxies.frames(signatures, plan))
     if set(expected) != set(table.column_names):
         return None
+    expected.update(
+        missing_as_nullable(
+            expected, narrow_int_columns(table.schema), flag_columns(plan)
+        )
+    )
     table = table.replace_schema_metadata(
         {b"pandas": page_metadata(items, table.schema, expected)}
     )
@@ -739,11 +966,37 @@ def page_metadata(items, schema, dtypes) -> bytes:
     return json.dumps(meta).encode("utf8")
 
 
-def pandas_page(items) -> pd.DataFrame:
-    """The page as make_tome builds it: pd.concat of the matches' frames."""
+def narrow_int_columns(schema) -> dict:
+    """The columns of a joined table that are narrow integers, with their type."""
+    return {
+        field.name: field.type
+        for field in schema
+        if resolved_narrow_int([field.type]) is not None
+    }
+
+
+def pandas_page(items, signatures=(), key_column=MATCH_KEY_COLUMN) -> pd.DataFrame:
+    """
+    The page as make_tome builds it: pd.concat of the matches' frames, after
+    narrowing as `realize` does.
+    """
     if len(items) == 0:
         return pd.DataFrame()
-    return pd.concat([item.to_pandas() for item in items], ignore_index=True)
+    items, plan = narrow_items(items, signatures, key_column)
+    frame = pd.concat([item.to_pandas() for item in items], ignore_index=True)
+    types = {}
+    for item in items:
+        for field in item.schema:
+            types.setdefault(field.name, []).append(field.type)
+    narrow_ints = {}
+    for name, column_types in types.items():
+        data_type = resolved_narrow_int(column_types)
+        if data_type is not None:
+            narrow_ints[name] = data_type
+    nullable = missing_as_nullable(dict(frame.dtypes), narrow_ints, flag_columns(plan))
+    for name, dtype in nullable.items():
+        frame[name] = frame[name].astype(dtype)
+    return frame
 
 
 def _ordered_map(function, items, threads):

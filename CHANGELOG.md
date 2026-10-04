@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `widen` argument on `TomeLoader.get_dataframe`, `TomeLoader.scan`, `TomeCuratorFs.get_dataframe` and `TomeCuratorFs.scan`: every integer column comes back as a 64-bit integer (`Int16` as `Int64`) and every float column as float64, with the values of the default load. It is for analysis code: narrow integers wrap in element-wise arithmetic (an int16 `money * 5` gives 14,464 for 16,000).
+- `pureskillgg_dsdk.tome.NarrowingError`, raised when a value doesn't fit the type its column is narrowed to.
+
+### Changed
+
+- **Tomes that mix old csds files with csgo-ppp's compact player tables are narrowed, not widened.** Where some matches or pages hold a column as int64 or float64 and others as int8, int16, int32 or float32, `build_basic_tomes` and the loaders cast the wide values to the narrow type. The casts are checked: a value that doesn't fit raises `NarrowingError`, naming the column, the match (or the page) and the value. `current_ammo` stays int64 (the compact files' int16 is widened to it, on every page), since older files hold 4294967295 there. A float64 narrowed to float32 is rounded to the nearest float32; no other value changes. A narrow integer column with missing values is pandas' nullable `Int8`, `Int16` or `Int32`, not float64. At the end, `build_basic_tomes` casts any page not yet at the tome's types (one written before the first compact match, or before a wider narrow type turned up) and writes it again, so every page holds the tome's types. Tomes of old files only that built before build and load exactly as before. docs/tome-data-model.md has the rules.
+- **Flags held as 0 and 1 in some files and as bool in others are narrowed to bool.** Older csds files hold `burst_mode` and `is_silenced` (`player_status`) and flags in `player_death`, `other_death` and `bomb_defuse` as int64 declared `Int64`; newer ones hold bool. A page holding both couldn't be written (`pd.concat` made an object column of bools and ints, which pyarrow refused), so `build_basic_tomes` failed on tomes spanning those csds versions. Now the integers are cast to bool with a check: 0 and 1 become False and True, a missing value stays missing (`boolean` in pandas), and any other value raises `NarrowingError`. `widen=True` leaves flags bool. `make_tome` still joins a page's frames with `pd.concat`, so it still fails on such a page.
+- `build_basic_tomes` decodes dictionary (category) columns, such as the compact `place_name`, as it reads each match, so their pages are built with pyarrow instead of falling back to pandas. pandas reads them as strings, which is what `pd.concat` gives categories that differ between matches.
+
+## 3.3.1
+
+### Added
+
 - `TomeCuratorFs.build_basic_tomes(channels)` (and `build_basic_tomes_from_fs`) builds the header tome and one tome per channel in one walk: each match is visited once, for its manifest, its header row and every channel, read with pyarrow by 4 threads. Each channel's tome holds the matches that have the channel, with their rows tagged `match_key`, and loads with the same values and dtypes as a `make_tome` tome over a subheader of those matches. A match key listed twice is built once. Complete tomes are kept, so a rerun reads nothing; an interrupted build leaves no partial channel tome and starts over.
 - `TomeWriterFs.write_page` also takes a `pyarrow.Table`.
 - `columns` argument on `TomeLoader.get_dataframe` and `TomeCuratorFs.get_dataframe`: read only these columns, in this order.
