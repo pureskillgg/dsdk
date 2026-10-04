@@ -43,7 +43,7 @@ from .header_tome import create_subheader_tome_from_fs, get_manifest_key_paths_f
 from .loader import TomeLoader
 from .manifest import TomeManifest
 from .narrowing import (
-    is_wide,
+    NarrowingError,
     missing_as_nullable,
     narrow_table,
     plan_narrowing,
@@ -525,8 +525,11 @@ class _ArrowScribe:
 
     def _narrow_written_pages(self):
         """
-        Narrow, and write again, the pages that still hold a column wide that
-        the tome narrows: pages written before a match with the narrow type.
+        Write again, at the tome's types, the pages that hold a column the
+        tome narrows at another type: wide, because the page was written
+        before a match with the narrow type or holds a value its matches'
+        narrow type can't, or narrower, because a later match brought a wider
+        narrow type. A value that doesn't fit the tome's type raises here.
         """
         plan = plan_narrowing(signature[0] for signature in self._signatures)
         if not plan:
@@ -534,22 +537,24 @@ class _ArrowScribe:
         for page, keys in zip(self._manifest.get()["pages"], self._page_keys):
             path = get_page_path_fs(self._tome_root, "dataframe", page)
             schema = pq.read_schema(path)
-            wide = {
+            differ = {
                 name: target
                 for name, target in plan.items()
-                if name in schema.names and is_wide(schema.field(name).type)
+                if name in schema.names
+                and schema.field(name).type != target
+                and not pa.types.is_null(schema.field(name).type)
             }
-            if not wide:
+            if not differ:
                 continue
             table = pq.read_table(path)
-            table = narrow_table(table, wide, describe_rows(table, self._key_column))
+            table = narrow_table(table, differ, describe_rows(table, self._key_column))
             self._writer.write_page(page, table, keys)
             self.narrowed_pages += 1
             self._log.info(
                 "Page narrowed",
                 tome=self._manifest.get()["tome"],
                 page_number=page["number"],
-                columns=sorted(wide),
+                columns=sorted(differ),
             )
 
 
@@ -847,14 +852,27 @@ def describe_rows(table, key_column):
 
 
 def narrow_items(items, signatures, key_column):
-    """The page's tables, narrowed where its matches mix wide and narrow types."""
+    """
+    The page's tables, narrowed where its matches mix wide and narrow types,
+    and the plan they were narrowed by.
+
+    A value that doesn't fit the page's narrow type may still fit the wider
+    narrow type a later match brings (int16 after int8), so the page keeps
+    that column wide instead of raising. The tome's last step narrows it to
+    the tome's type, and raises there if the value doesn't fit that either.
+    """
     plan = plan_narrowing(signature[0] for signature in signatures)
-    if not plan:
-        return items, plan
-    narrowed = [
-        narrow_table(item, plan, describe_rows(item, key_column)) for item in items
-    ]
-    return narrowed, plan
+    while plan:
+        try:
+            narrowed = [
+                narrow_table(item, plan, describe_rows(item, key_column))
+                for item in items
+            ]
+        except NarrowingError as err:
+            plan = {name: t for name, t in plan.items() if name != err.column}
+            continue
+        return narrowed, plan
+    return items, plan
 
 
 def page_dtypes(frames) -> dict:

@@ -151,10 +151,13 @@ float64 and strings. A tome can hold both, and loads them as follows.
   column as float64, with the values of the default load. The default load
   is unchanged for tomes of old files.
 - **Where it happens.** `build_basic_tomes` narrows each page as it builds
-  it, with pyarrow or, when pyarrow can't join a page, with pandas. A page
-  written before the first compact match turned up is narrowed and written
-  again when the tome is finished ("Page narrowed" in the log), so every page
-  holds the tome's types. The loaders narrow across pages, for tomes whose
+  it, with pyarrow or, when pyarrow can't join a page, with pandas. When the
+  tome is finished, every page not yet at the tome's types is cast to them
+  and written again ("Page narrowed" in the log): a page written before the
+  first compact match turned up, a page narrowed to int8 when a later match
+  brought int16, and a page holding a value its own matches' narrow type
+  can't hold, which keeps that column wide until then. So every page holds
+  the tome's types, and a value that doesn't fit them stops the build there. The loaders narrow across pages, for tomes whose
   pages differ, such as a `make_tome` tome continued after the format
   changed. `make_tome` joins each page's frames with `pd.concat` as before,
   so a page that mixes old and compact matches is widened there.

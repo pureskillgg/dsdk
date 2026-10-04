@@ -54,6 +54,11 @@ _TYPE_NAMES = {pa.float32(): "float32", pa.float64(): "float64"}
 class NarrowingError(ValueError):
     """A value doesn't fit the type its column is narrowed to."""
 
+    def __init__(self, message, *, column=None, value=None):
+        super().__init__(message)
+        self.column = column
+        self.value = value
+
 
 def type_name(data_type) -> str:
     """The numpy-style name of an Arrow type: float32, not float."""
@@ -101,8 +106,10 @@ def is_wide(data_type) -> bool:
 
 def narrow_table(table, plan, describe=None, *, check=True):
     """
-    `table` with each wide column named in `plan` cast to its type, and its
-    pandas metadata entry to match.
+    `table` with each column named in `plan` cast to its type, and its pandas
+    metadata entry to match: a wide column is narrowed, and a narrower
+    integer column (int8 where the plan says int16) is widened to it, which
+    is exact. A null-typed column is left for the join to fill.
 
     `describe(row)` names where a row is, for the error. With ``check=False``
     the casts aren't checked; that is for two-row stand-ins whose values
@@ -114,7 +121,7 @@ def narrow_table(table, plan, describe=None, *, check=True):
             continue
         position = table.column_names.index(name)
         column = table.column(position)
-        if not is_wide(column.type):
+        if column.type == target or pa.types.is_null(column.type):
             continue
         if check:
             narrowed = cast_checked(column, target, name, describe)
@@ -130,12 +137,18 @@ def narrow_table(table, plan, describe=None, *, check=True):
 
 
 def cast_checked(column, target, name, describe=None):
-    """Cast a wide column to `target`, or raise NarrowingError."""
+    """Cast a column to `target`, or raise NarrowingError for a value it can't hold."""
     if pa.types.is_floating(target):
         narrowed = column.cast(target, safe=False)
         bad = pc.and_(pc.is_finite(column), pc.invert(pc.is_finite(narrowed)))
         _raise_at_first(bad, column, target, name, describe)
         return narrowed
+    if (
+        pa.types.is_signed_integer(column.type)
+        and column.type.bit_width <= target.bit_width
+    ):
+        # A narrower signed integer widens exactly.
+        return column.cast(target)
     info = np.iinfo(target.to_pandas_dtype())
     if pa.types.is_floating(column.type):
         # A float must hold a whole number in range. A NaN or an infinity
@@ -165,7 +178,9 @@ def _raise_at_first(bad, column, target, name, describe):
     raise NarrowingError(
         f"Column {name!r} of {where} holds {value!r}, which {target_name} can't"
         f" hold. Other tables store {name!r} as {target_name}, so the tome"
-        f" narrows it to that type."
+        f" narrows it to that type.",
+        column=name,
+        value=value,
     )
 
 

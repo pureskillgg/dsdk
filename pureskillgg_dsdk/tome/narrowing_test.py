@@ -431,6 +431,54 @@ def test_a_value_that_does_not_fit_stops_the_build(
     assert repr(value) in message
 
 
+@pytest.mark.parametrize("old_value", [100, 200, 40000])
+def test_the_widest_narrow_type_wins(tmp_path, old_value):
+    # The first page joins an int8 compact match and an old one; a later
+    # compact match brings int16. The tome is int16 on every page: 100 is
+    # narrowed to int8 on the first page, then widened; 200 doesn't fit int8,
+    # so that page keeps the column wide until int16 is known; 40000 fits
+    # neither, and stops the build.
+    root = tmp_path / "ds"
+    rows = 1000
+    old = pd.DataFrame(
+        {"a": pd.array([old_value] + [1] * (rows - 1), dtype="Int64"), "n": 1}
+    )
+    keys = {
+        "m0": write_match(
+            root, "m0", {"events": pa.table({"a": pa.array([3, 4], pa.int8())})}
+        ),
+        "m1": write_match(root, "m1", {"events": old}),
+        "m2": write_match(
+            root, "m2", {"events": pa.table({"a": pa.array([300, 5], pa.int16())})}
+        ),
+    }
+    log = RecordingLogger()
+    curator = make_curator(tmp_path / "tomes", root, log=log)
+
+    def build_events():
+        return curator.build_basic_tomes(["events"], max_page_size_mb=0.01)
+
+    if old_value == 40000:
+        with pytest.raises(NarrowingError) as raised:
+            build_events()
+        assert repr(keys["m1"]) in str(raised.value)
+        assert "40000" in str(raised.value)
+        return
+    loader = build_events().tomes["events"]
+
+    assert [k for _, k in loader.iterate_pages()] == [
+        [keys["m0"], keys["m1"]],
+        [keys["m2"]],
+    ]
+    for page in loader.manifest["pages"]:
+        path = get_page_path_fs(str(tmp_path / "tomes"), "dataframe", page)
+        assert pq.read_schema(path).field("a").type == pa.int16()
+    assert [kw["page_number"] for kw in log.named("Page narrowed")] == [0]
+    df = loader.get_dataframe()
+    assert df["a"].dtype == "Int16"
+    assert df["a"].tolist() == [3, 4, old_value] + [1] * (rows - 1) + [300, 5]
+
+
 def test_current_ammo_stays_wide(tmp_path, sources):
     # 4294967295 doesn't fit int16, and current_ammo is never narrowed.
     write_collection(tmp_path / "ds", {"m1": sources["m1"], "m2": sources["m2"]})
