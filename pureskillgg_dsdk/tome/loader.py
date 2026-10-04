@@ -90,7 +90,8 @@ class TomeLoader:
         widen : bool, default=False
             Return every integer column as a 64-bit integer and every float
             column as float64 (nullable ones stay nullable: ``Int16`` becomes
-            ``Int64``). The values are those of the default read. Use it for
+            ``Int64``); bool columns stay bool. The values are those of the
+            default read. Use it for
             analysis code that does arithmetic: an int16 ``money * 5`` wraps
             past 32,767, an int64 one doesn't.
 
@@ -127,7 +128,7 @@ class TomeLoader:
         ----------
         widen : bool, default=False
             Integer columns as Int64 and float columns as Float64, as in
-            `get_dataframe`.
+            `get_dataframe`; bool columns stay Boolean.
 
         Returns
         -------

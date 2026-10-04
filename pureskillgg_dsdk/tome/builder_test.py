@@ -397,30 +397,35 @@ def test_categories_are_decoded_and_built_with_pyarrow(
     assert log.named("Page built with pandas") == []
 
 
-@pytest.mark.parametrize("compact_every", [256, 2, 1])
+@pytest.mark.parametrize("max_page_size_mb", [None, 0.001])
 def test_page_built_with_pandas_when_arrow_cannot_match_it(
-    tmp_path, compact_every, monkeypatch
+    tmp_path, drift_collection, max_page_size_mb, monkeypatch
 ):
-    # pyarrow can't join bool with int64; pd.concat makes them int64, so this
-    # page is built with pandas.
-    monkeypatch.setattr(builder, "_COMPACT_EVERY", compact_every)
-    root = tmp_path / "ds"
-    for i, flags in enumerate([[True, False], [0, 1]]):
-        channel = pd.DataFrame({"flag": flags, "n": [i] * len(flags)})
-        write_match(root, f"m{i}", {"events": channel}, day=15 + i)
+    # When pyarrow can't join a page's tables (or they don't read back as
+    # make_tome's dtypes), the page is built with pd.concat, as make_tome
+    # builds it.
+    monkeypatch.setattr(builder, "realize", lambda *args, **kwargs: None)
     log = RecordingLogger()
-    curator = make_curator(tmp_path / "tomes", root, log=log)
-    old = build_the_old_way(curator, ["events"])
-
-    built = curator.build_basic_tomes(
-        ["events"],
-        tome_name="new_{channel}.{dates}",
-        header_tome_name="h.2022-01-01,2022-01-02",
+    curator = make_curator(tmp_path / "tomes", drift_collection, log=log)
+    old = build_the_old_way(
+        curator,
+        ["player_death", "round_end"],
+        max_page_size_mb=max_page_size_mb,
+        limit_check_frequency=1,
     )
 
-    assert_same_tome(built.tomes["events"], old["events"])
-    assert frame(built.tomes["events"])["flag"].dtype == "int64"
-    assert len(log.named("Page built with pandas")) == 1
+    built = curator.build_basic_tomes(
+        ["player_death", "round_end"],
+        tome_name="new_{channel}.{dates}",
+        header_tome_name="new_header.2022-01-01,2022-01-02",
+        max_page_size_mb=max_page_size_mb,
+    )
+
+    for channel in ["player_death", "round_end"]:
+        assert_same_tome(built.tomes[channel], old[channel])
+    pages = sum(len(loader.manifest["pages"]) for loader in built.tomes.values())
+    # The header's page too.
+    assert len(log.named("Page built with pandas")) == pages + 1
 
 
 # Keys, pages and threads.

@@ -223,10 +223,8 @@ CASES = {
         (zstd, frame(a=pd.Categorical(["x", "y"]))),
         (zstd, frame(a=["z", "w"])),
     ],
-    "bool then int": [
-        (zstd, frame(a=[True, False])),
-        (zstd, frame(a=[1, 2])),
-    ],
+    # bool on some pages and integers on others is narrowed to bool instead:
+    # narrowing_test.py.
     "an empty last page": [
         (zstd, game_frame(0)),
         (zstd, pd.DataFrame()),
@@ -472,11 +470,9 @@ def test_polars_missing_gives_a_clear_error(tmp_path, monkeypatch):
         loader.scan()
 
 
-# Cases polars reads with other values than pandas: polars has no mixed
-# object columns, so a bool column joined with ints becomes ints.
-POLARS_CASES = {
-    name: pages for name, pages in CASES.items() if name not in {"bool then int"}
-}
+# polars reads every case with the values pandas gives. (A bool column joined
+# with ints, which polars read as ints, is narrowed to bool now.)
+POLARS_CASES = CASES
 
 
 def to_python(values):

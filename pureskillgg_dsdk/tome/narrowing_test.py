@@ -22,7 +22,7 @@ import pytest
 from . import builder
 from .builder_test import FIXTURES, RecordingLogger, make_curator, write_match
 from .constants import MATCH_KEY_COLUMN, get_page_path_fs
-from .loader_test import arrow_only, frame, ints, write_tome, zstd
+from .loader_test import arrow_only, concat_pages, frame, ints, write_tome, zstd
 from .narrowing import (
     NarrowingError,
     narrow_numpy_type,
@@ -56,31 +56,19 @@ COMPACT_TYPES = {
     "ping": pa.int16(),
     "round_start_equipment_cost": pa.int16(),
     "equipment_value_calc": pa.int16(),
+    # Flags: 0 and 1 in int64 columns declared Int64 in old files.
+    "burst_mode": pa.bool_(),
+    "is_silenced": pa.bool_(),
 }
 
 
 def fixture_table(match, channel, start=0):
     """
     ROWS rows of a fixture channel as stored: int64, float64, pandas
-    metadata. player_status' burst_mode and is_silenced are made bool, as
-    csgo-ppp writes them today; the fixtures predate that. (A page that joins
-    a bool column with one declared Int64 fails to write, with or without
-    narrowing: pd.concat makes it an object column of bools and ints.)
+    metadata, and the flags burst_mode and is_silenced as 0 and 1 declared
+    Int64, as the archive holds them.
     """
-    table = pq.read_table(os.path.join(match, channel)).slice(start, ROWS)
-    flags = [n for n in ("burst_mode", "is_silenced") if n in table.column_names]
-    if not flags:
-        return table
-    metadata = json.loads(table.schema.metadata[b"pandas"])
-    for entry in metadata["columns"]:
-        if entry["name"] in flags:
-            entry["pandas_type"] = entry["numpy_type"] = "bool"
-    for name in flags:
-        position = table.column_names.index(name)
-        table = table.set_column(position, name, table.column(name).cast(pa.bool_()))
-    return table.replace_schema_metadata(
-        {b"pandas": json.dumps(metadata).encode("utf8")}
-    )
+    return pq.read_table(os.path.join(match, channel)).slice(start, ROWS)
 
 
 def compact(table, channel):
@@ -190,12 +178,14 @@ def expected_dtype(name, source_tables):
     data_type = compact_tables[0].schema.field(name).type
     if pa.types.is_floating(data_type):
         return np.dtype("float32")
-    if not pa.types.is_integer(data_type):
-        return None
     nullable = any(
         name not in t.column_names or declared_numpy_type(t, name) == "Int64"
         for t in old
     )
+    if pa.types.is_boolean(data_type):
+        return pd.BooleanDtype() if nullable else np.dtype("bool")
+    if not pa.types.is_integer(data_type):
+        return None
     bits = data_type.bit_width
     return pd.api.types.pandas_dtype(f"Int{bits}" if nullable else f"int{bits}")
 
@@ -494,6 +484,74 @@ def test_current_ammo_stays_wide(tmp_path, sources):
     assert df["weapon_code"].dtype == "Int16"
 
 
+# Flags: 0 and 1 declared Int64 in old files, bool in newer ones.
+
+FLAG_ROWS = 1000
+
+
+def flag_collection(root, old_flags):
+    """An old match whose flag is old_flags then zeros, and a compact one."""
+    old = pd.DataFrame(
+        {
+            "flag": pd.array(
+                old_flags + [0] * (FLAG_ROWS - len(old_flags)), dtype="Int64"
+            ),
+            "n": 1,
+        }
+    )
+    new = pa.table({"flag": pa.array([True, False]), "n": pa.array([2, 2])})
+    return {
+        "m0": write_match(root, "m0", {"events": old}),
+        "m1": write_match(root, "m1", {"events": new}),
+    }
+
+
+@pytest.mark.parametrize("max_page_size_mb", [None, 0.01])
+def test_flags_narrow_to_bool(tmp_path, max_page_size_mb):
+    # With one page, the page is narrowed as it is built; with a page per
+    # match, the old page is narrowed when the tome is finished.
+    flag_collection(tmp_path / "ds", [1, None])
+    log = RecordingLogger()
+    curator = make_curator(tmp_path / "tomes", tmp_path / "ds", log=log)
+
+    loader = curator.build_basic_tomes(
+        ["events"], max_page_size_mb=max_page_size_mb
+    ).tomes["events"]
+
+    pages = loader.manifest["pages"]
+    assert len(pages) == (1 if max_page_size_mb is None else 2)
+    for page in pages:
+        path = get_page_path_fs(str(tmp_path / "tomes"), "dataframe", page)
+        assert pq.read_schema(path).field("flag").type == pa.bool_()
+    built_with_pandas = log.named("Page built with pandas")
+    assert [kw for kw in built_with_pandas if kw["tome"].endswith("events")] == []
+    df = loader.get_dataframe()
+    # Nullable, as the old file declared it; the missing value stays missing.
+    assert df["flag"].dtype == "boolean"
+    expected = [True, None] + [False] * (FLAG_ROWS - 2) + [True, False]
+    assert to_python(df["flag"]) == expected
+    assert loader.get_dataframe(widen=True)["flag"].dtype == "boolean"
+
+    pl = pytest.importorskip("polars")
+    polars_df = loader.get_dataframe(library="polars")
+    assert polars_df.schema["flag"] == pl.Boolean
+    assert to_python(polars_df["flag"].to_list()) == expected
+
+
+@pytest.mark.parametrize("max_page_size_mb", [None, 0.01])
+def test_a_flag_that_is_not_0_or_1_stops_the_build(tmp_path, max_page_size_mb):
+    keys = flag_collection(tmp_path / "ds", [1, 2])
+    curator = make_curator(tmp_path / "tomes", tmp_path / "ds")
+
+    with pytest.raises(NarrowingError) as raised:
+        curator.build_basic_tomes(["events"], max_page_size_mb=max_page_size_mb)
+
+    message = str(raised.value)
+    assert "'flag'" in message
+    assert repr(keys["m0"]) in message
+    assert "holds 2," in message
+
+
 # Narrowing on load: a tome whose pages hold old and compact matches.
 
 
@@ -658,6 +716,70 @@ def test_old_tomes_widen_to_themselves(tmp_path):
     assert narrow["player_id_fixed"].dtype == "float64"
 
 
+def flag_pages(old_flags):
+    return [
+        (
+            zstd,
+            frame(
+                flag=ints(*old_flags),
+                **{MATCH_KEY_COLUMN: ["old-match"] * len(old_flags)},
+            ),
+        ),
+        (
+            arrow_only,
+            frame(flag=[True, False], **{MATCH_KEY_COLUMN: ["new-match"] * 2}),
+        ),
+    ]
+
+
+def test_flags_on_old_and_compact_pages_load_as_bool(tmp_path):
+    loader = write_tome(str(tmp_path), flag_pages([1, None, 0]))
+
+    df = loader.get_dataframe()
+
+    assert df["flag"].dtype == "boolean"
+    assert to_python(df["flag"]) == [True, None, False, True, False]
+    assert loader.get_dataframe(widen=True)["flag"].dtype == "boolean"
+
+    pl = pytest.importorskip("polars")
+    polars_df = loader.get_dataframe(library="polars")
+    assert polars_df.schema["flag"] == pl.Boolean
+    assert to_python(polars_df["flag"].to_list()) == to_python(df["flag"])
+    assert loader.scan(widen=True).collect_schema()["flag"] == pl.Boolean
+
+
+def test_a_flag_that_is_not_0_or_1_fails_the_load(tmp_path):
+    loader = write_tome(str(tmp_path), flag_pages([0, 2]))
+
+    reads = [loader.get_dataframe]
+    if _has_polars():
+        reads += [lambda: loader.get_dataframe(library="polars"), loader.scan]
+    for load in reads:
+        with pytest.raises(NarrowingError) as raised:
+            load()
+        message = str(raised.value)
+        assert "'flag'" in message
+        assert "'old-match'" in message
+        assert "holds 2," in message
+
+
+@pytest.mark.parametrize(
+    "pages",
+    [
+        [(zstd, frame(flag=ints(0, 1))), (zstd, frame(flag=ints(1, None)))],
+        [(zstd, frame(flag=[True, False])), (arrow_only, frame(flag=[False]))],
+    ],
+    ids=["Int64 flags", "bool flags"],
+)
+def test_flags_of_one_format_load_as_before(tmp_path, pages):
+    root_path = str(tmp_path)
+    loader = write_tome(root_path, pages)
+
+    pd.testing.assert_frame_equal(
+        loader.get_dataframe(), concat_pages(root_path, loader)
+    )
+
+
 # The rules.
 
 
@@ -675,7 +797,14 @@ def test_old_tomes_widen_to_themselves(tmp_path):
         ("a", [pa.int8(), pa.int16()], None),
         ("a", [pa.int64(), pa.float64()], None),
         ("a", [pa.null(), pa.int8()], None),
-        ("a", [pa.bool_(), pa.int8()], None),
+        ("a", [pa.bool_(), pa.int64()], pa.bool_()),
+        ("a", [pa.bool_(), pa.int8()], pa.bool_()),
+        ("a", [pa.bool_(), pa.int64(), pa.int8(), pa.null()], pa.bool_()),
+        ("a", [pa.bool_()], None),
+        ("a", [pa.bool_(), pa.null()], None),
+        ("a", [pa.bool_(), pa.float64()], None),
+        ("a", [pa.bool_(), pa.uint8()], None),
+        ("a", [pa.bool_(), pa.string()], None),
         ("a", [pa.float32(), pa.int8(), pa.int64()], None),
         ("a", [pa.uint8(), pa.int64()], None),
         ("a", [pa.string(), pa.int16()], None),
@@ -696,6 +825,9 @@ def test_narrow_target(name, types, expected):
         ("object", pa.int8(), False, "int8"),
         ("float64", pa.float32(), True, "float32"),
         ("Float64", pa.float32(), False, "Float32"),
+        ("Int64", pa.bool_(), False, "boolean"),
+        ("int64", pa.bool_(), False, "bool"),
+        ("int64", pa.bool_(), True, "boolean"),
     ],
 )
 def test_narrow_numpy_type(numpy_type, target, has_nulls, expected):
@@ -715,6 +847,7 @@ def test_narrow_numpy_type(numpy_type, target, has_nulls, expected):
         (np.dtype("float64"), None),
         (pd.Int64Dtype(), None),
         (np.dtype("bool"), None),
+        (pd.BooleanDtype(), None),
         (pd.CategoricalDtype(["x"]), None),
     ],
 )

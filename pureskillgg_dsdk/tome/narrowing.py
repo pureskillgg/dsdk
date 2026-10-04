@@ -20,13 +20,18 @@ The rules, for one column across the tables or pages being joined:
   csds versions).
 - float32 together with float64: the float64 ones are narrowed to float32. A
   finite value beyond float32's range is an overflow.
+- bool together with integers: the integers are narrowed to bool. Only 0 and
+  1 may be narrowed, to False and True. Older csds files hold flags such as
+  ``burst_mode`` as 0 and 1 in int64 columns declared ``Int64``; newer ones
+  hold bool.
 - Any other mix (or a column in `KEEP_WIDE`) is joined as before.
 
 A pandas metadata entry follows its column: a nullable ``Int64`` becomes the
-nullable type of the narrow width, so pandas gives what ``pd.concat`` gives,
-at the narrow width. An integer column that ends up with missing values,
-because some tables lack it or it holds nulls, is the nullable ``Int8``,
-``Int16`` or ``Int32`` in pandas, rather than float64.
+nullable type of the narrow width (``boolean`` for a flag), so pandas gives
+what ``pd.concat`` gives, at the narrow width. An integer column that ends up
+with missing values, because some tables lack it or it holds nulls, is the
+nullable ``Int8``, ``Int16`` or ``Int32`` in pandas, rather than float64; a
+narrowed flag is the nullable ``boolean``.
 """
 
 # pyarrow.compute builds most of its functions when it is imported, so pylint
@@ -75,14 +80,18 @@ def narrow_target(name, types):
         return None
     present = {data_type for data_type in types if not pa.types.is_null(data_type)}
     narrow = [data_type for data_type in present if data_type in NARROW_INTS]
-    if narrow:
+    target = None
+    if pa.bool_() in present:
+        others = present.difference([pa.bool_()])
+        if others and all(pa.types.is_signed_integer(t) for t in others):
+            target = pa.bool_()
+    elif narrow:
         wide = present.difference(narrow)
         if wide and all(data_type in _WIDE for data_type in wide):
-            return max(narrow, key=lambda data_type: data_type.bit_width)
-        return None
-    if present == {pa.float32(), pa.float64()}:
-        return pa.float32()
-    return None
+            target = max(narrow, key=lambda data_type: data_type.bit_width)
+    elif present == {pa.float32(), pa.float64()}:
+        target = pa.float32()
+    return target
 
 
 def plan_narrowing(schemas) -> dict:
@@ -97,11 +106,6 @@ def plan_narrowing(schemas) -> dict:
         if target is not None:
             plan[name] = target
     return plan
-
-
-def is_wide(data_type) -> bool:
-    """int64 or float64: the types narrowing casts from."""
-    return data_type in _WIDE
 
 
 def narrow_table(table, plan, describe=None, *, check=True):
@@ -138,6 +142,11 @@ def narrow_table(table, plan, describe=None, *, check=True):
 
 def cast_checked(column, target, name, describe=None):
     """Cast a column to `target`, or raise NarrowingError for a value it can't hold."""
+    if pa.types.is_boolean(target):
+        # Only 0 and 1 are flags; a null stays null.
+        ok = pc.or_(pc.equal(column, 0), pc.equal(column, 1))
+        _raise_at_first(pc.invert(ok), column, target, name, describe)
+        return pc.not_equal(column, 0)
     if pa.types.is_floating(target):
         narrowed = column.cast(target, safe=False)
         bad = pc.and_(pc.is_finite(column), pc.invert(pc.is_finite(narrowed)))
@@ -211,6 +220,8 @@ def narrow_numpy_type(numpy_type, target, has_nulls) -> str:
     was_nullable = isinstance(numpy_type, str) and numpy_type[:1] in ("I", "U", "F")
     if pa.types.is_floating(target):
         return "Float32" if was_nullable else "float32"
+    if pa.types.is_boolean(target):
+        return "boolean" if was_nullable or has_nulls else "bool"
     bits = target.bit_width
     return f"Int{bits}" if was_nullable or has_nulls else f"int{bits}"
 
@@ -231,17 +242,28 @@ def nullable_int_dtype(data_type):
     return pd.api.types.pandas_dtype(f"Int{data_type.bit_width}")
 
 
-def missing_as_nullable(dtypes, narrow_ints) -> dict:
+def missing_as_nullable(dtypes, narrow_ints, flags=()) -> dict:
     """
-    The columns pandas would read as float64 only because their narrow
-    integers have missing values, with the nullable dtype that holds them:
-    ``narrow_ints`` maps column names to their resolved narrow integer type.
+    The columns pandas would read as float64 (or object) only because their
+    narrow integers (or narrowed flags) have missing values, with the
+    nullable dtype that holds them. ``narrow_ints`` maps column names to
+    their resolved narrow integer type; ``flags`` names the columns narrowed
+    to bool.
     """
-    return {
+    nullable = {
         name: nullable_int_dtype(data_type)
         for name, data_type in narrow_ints.items()
         if name in dtypes and dtypes[name] == np.dtype("float64")
     }
+    for name in flags:
+        if name in dtypes and dtypes[name] == np.dtype("object"):
+            nullable[name] = pd.BooleanDtype()
+    return nullable
+
+
+def flag_columns(plan) -> list:
+    """The columns a narrowing plan turns into bool."""
+    return [name for name, target in plan.items() if pa.types.is_boolean(target)]
 
 
 def widen_dtype(dtype):

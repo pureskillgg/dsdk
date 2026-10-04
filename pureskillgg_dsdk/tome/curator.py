@@ -303,7 +303,8 @@ class TomeCuratorFs:
             extra (``pureskillgg-dsdk[polars]``).
         widen : bool, default=False
             Every integer column as a 64-bit integer and every float column
-            as float64 (see `TomeLoader.get_dataframe`).
+            as float64; bool columns stay bool (see
+            `TomeLoader.get_dataframe`).
 
         Returns
         -------

@@ -13,10 +13,11 @@ joined with ``pd.concat``, as before, because pandas picks its dtype in ways
 pyarrow doesn't (and differently in pandas 2 and 3).
 
 Two exceptions keep narrow columns narrow (see `narrowing`). A column that is
-int64 or float64 on some pages and narrower on others is read page by page,
-its wide pages narrowed with checked casts, instead of widened. And a narrow
-integer column with missing values is pandas' nullable type of its width
-(``Int8``, ``Int16``, ``Int32``) instead of float64.
+int64 or float64 on some pages and narrower on others, or integer on some and
+bool on others, is read page by page, its pages cast to the narrow type with
+checked casts, instead of widened. And a narrow integer column with missing
+values is pandas' nullable type of its width (``Int8``, ``Int16``, ``Int32``)
+instead of float64.
 """
 
 import json
@@ -32,7 +33,7 @@ import pyarrow.parquet as pq
 
 from .constants import MATCH_KEY_COLUMN
 from .narrowing import (
-    is_wide,
+    flag_columns,
     missing_as_nullable,
     narrow_table,
     narrow_target,
@@ -173,8 +174,13 @@ def read_pages_pandas(
     pages = [read_page_info(path) for path in paths]
     names = select_columns(pages, columns)
     live = [page for page in pages if not page.is_empty]
-    frame = _read_columns(pages, live, names)
-    nullable = missing_as_nullable(dict(frame.dtypes), _narrow_int_columns(names, live))
+    narrowing = _plan_narrowing(names, live)
+    frame = _read_columns(pages, live, names, narrowing)
+    nullable = missing_as_nullable(
+        dict(frame.dtypes),
+        _narrow_int_columns(names, live, narrowing),
+        flag_columns(narrowing),
+    )
     for name, dtype in nullable.items():
         frame[name] = frame[name].astype(dtype)
     if widen:
@@ -183,12 +189,11 @@ def read_pages_pandas(
     return frame
 
 
-def _read_columns(pages, live, names) -> pd.DataFrame:
+def _read_columns(pages, live, names, narrowing) -> pd.DataFrame:
     """
     The columns `names`: steady ones in one dataset scan, drifting ones page
     by page with pd.read_parquet, and narrowed ones page by page with pyarrow.
     """
-    narrowing = _plan_narrowing(names, live)
     steady = {}
     for name in names:
         if name in narrowing:
@@ -224,12 +229,11 @@ def _plan_narrowing(names, pages):
     return plan
 
 
-def _narrow_int_columns(names, pages):
+def _narrow_int_columns(names, pages, narrowing):
     """
     The columns that every page holding them holds as narrow integers, once
     narrowed, with the type they join to.
     """
-    narrowing = _plan_narrowing(names, pages)
     result = {}
     for name in names:
         types = [
@@ -501,8 +505,7 @@ def scan_pages_polars(
             frame = frame.drop(page.index_columns)
         casts = [
             polars.col(name).cast(_polars_type(polars, target), strict=True)
-            for name, target in narrowing.items()
-            if name in page.fields and is_wide(page.fields[name].type)
+            for name, target in _differing(page, narrowing).items()
         ]
         if casts:
             frame = frame.with_columns(casts)
@@ -517,17 +520,24 @@ def scan_pages_polars(
     return lazy
 
 
+def _differing(page, plan):
+    """The planned columns this page holds at another type, with the plan's type."""
+    return {
+        name: target
+        for name, target in plan.items()
+        if name in page.fields
+        and page.fields[name].type != target
+        and not pa.types.is_null(page.fields[name].type)
+    }
+
+
 def _check_narrowing(pages, plan):
-    """Raise NarrowingError for a value of a wide page that doesn't fit."""
+    """Raise NarrowingError for a value of a page that doesn't fit the plan's type."""
     for page in pages:
-        wide = {
-            name: target
-            for name, target in plan.items()
-            if name in page.fields and is_wide(page.fields[name].type)
-        }
-        if wide:
-            table = pq.read_table(page.path, columns=list(wide))
-            narrow_table(table, wide, _describe_page_rows(page))
+        differ = _differing(page, plan)
+        if differ:
+            table = pq.read_table(page.path, columns=list(differ))
+            narrow_table(table, differ, _describe_page_rows(page))
 
 
 def _polars_type(polars, data_type):
@@ -537,6 +547,7 @@ def _polars_type(polars, data_type):
         pa.int16(): polars.Int16,
         pa.int32(): polars.Int32,
         pa.float32(): polars.Float32,
+        pa.bool_(): polars.Boolean,
     }[data_type]
 
 

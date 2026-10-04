@@ -44,6 +44,7 @@ from .loader import TomeLoader
 from .manifest import TomeManifest
 from .narrowing import (
     NarrowingError,
+    flag_columns,
     missing_as_nullable,
     narrow_table,
     plan_narrowing,
@@ -70,6 +71,8 @@ _PARQUET = "application/x-parquet"
 _COMPACT_EVERY = 256
 _STATUS_EVERY = 1000
 _ARROW_ERRORS = (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError)
+# Narrow types a later match may still widen to int16 or int32.
+_MAY_WIDEN = (pa.int8(), pa.int16())
 
 
 @dataclass(frozen=True)
@@ -856,10 +859,11 @@ def narrow_items(items, signatures, key_column):
     The page's tables, narrowed where its matches mix wide and narrow types,
     and the plan they were narrowed by.
 
-    A value that doesn't fit the page's narrow type may still fit the wider
-    narrow type a later match brings (int16 after int8), so the page keeps
-    that column wide instead of raising. The tome's last step narrows it to
-    the tome's type, and raises there if the value doesn't fit that either.
+    A value that doesn't fit int8 or int16 may still fit the wider narrow
+    type a later match brings (int16 after int8), so the page keeps that
+    column wide instead of raising. The tome's last step narrows it to the
+    tome's type, and raises there if the value doesn't fit that either.
+    Nothing wider than int32, float32 or bool can come, so those raise now.
     """
     plan = plan_narrowing(signature[0] for signature in signatures)
     while plan:
@@ -869,6 +873,8 @@ def narrow_items(items, signatures, key_column):
                 for item in items
             ]
         except NarrowingError as err:
+            if plan.get(err.column) not in _MAY_WIDEN:
+                raise
             plan = {name: t for name, t in plan.items() if name != err.column}
             continue
         return narrowed, plan
@@ -906,7 +912,11 @@ def realize(items, signatures, proxies, key_column=MATCH_KEY_COLUMN):
     expected = page_dtypes(proxies.frames(signatures, plan))
     if set(expected) != set(table.column_names):
         return None
-    expected.update(missing_as_nullable(expected, narrow_int_columns(table.schema)))
+    expected.update(
+        missing_as_nullable(
+            expected, narrow_int_columns(table.schema), flag_columns(plan)
+        )
+    )
     table = table.replace_schema_metadata(
         {b"pandas": page_metadata(items, table.schema, expected)}
     )
@@ -972,7 +982,7 @@ def pandas_page(items, signatures=(), key_column=MATCH_KEY_COLUMN) -> pd.DataFra
     """
     if len(items) == 0:
         return pd.DataFrame()
-    items, _ = narrow_items(items, signatures, key_column)
+    items, plan = narrow_items(items, signatures, key_column)
     frame = pd.concat([item.to_pandas() for item in items], ignore_index=True)
     types = {}
     for item in items:
@@ -983,7 +993,8 @@ def pandas_page(items, signatures=(), key_column=MATCH_KEY_COLUMN) -> pd.DataFra
         data_type = resolved_narrow_int(column_types)
         if data_type is not None:
             narrow_ints[name] = data_type
-    for name, dtype in missing_as_nullable(dict(frame.dtypes), narrow_ints).items():
+    nullable = missing_as_nullable(dict(frame.dtypes), narrow_ints, flag_columns(plan))
+    for name, dtype in nullable.items():
         frame[name] = frame[name].astype(dtype)
     return frame
 

@@ -109,7 +109,10 @@ Warm loads, median of 3, on the maintainer's machine:
 csgo-ppp's compact player tables (`player_vector` and `player_status`) store
 integers as int8, int16 or int32, floats as float32 and `place_name` as a
 dictionary, without pandas metadata. Files written before them store int64,
-float64 and strings. A tome can hold both, and loads them as follows.
+float64 and strings. Older files also hold some flags (`burst_mode` and
+`is_silenced` in `player_status`, and flags in `player_death`, `other_death`
+and `bomb_defuse`) as 0 and 1 in int64 columns declared `Int64`, where newer
+ones hold bool. A tome can hold all of these, and loads them as follows.
 
 - **A tome of compact files only** loads the narrow types: numpy `int8`,
   `int16`, `int32` and `float32` in pandas, `Int8` to `Float32` in polars.
@@ -118,16 +121,18 @@ float64 and strings. A tome can hold both, and loads them as follows.
   as a narrower type, the wide values are cast to the narrow type: integers
   to the widest narrow type seen, float64 to float32, and a float64 that
   holds whole numbers (`player_id_fixed` in some csds versions) to the
-  integer type. Any other mix (bool with int64, unsigned types, an integer
-  with float32) is joined as before.
+  integer type. Where some hold a column as bool and others as integers,
+  the integers are cast to bool: 0 to False and 1 to True. Any other mix
+  (unsigned types, an integer with float32, bool with a float) is joined as
+  before.
 - **Every cast is checked.** A value that doesn't fit raises
   `pureskillgg_dsdk.tome.NarrowingError`, which names the column, where the
   value is and the value: past the type's range or below it, a float that
-  isn't a whole number (or is NaN or infinite) for an integer column, or a
-  finite float beyond float32's range. `build_basic_tomes` raises it during
-  the build, naming the match; the loaders raise it when they read a tome
-  whose pages differ, naming the page and row, and the match when the page
-  has a `match_key` column.
+  isn't a whole number (or is NaN or infinite) for an integer column, a
+  finite float beyond float32's range, or a flag other than 0 or 1.
+  `build_basic_tomes` raises it during the build, naming the match; the
+  loaders raise it when they read a tome whose pages differ, naming the page
+  and row, and the match when the page has a `match_key` column.
 - **`current_ammo` stays int64** in a mixed tome. Older files hold
   4294967295 there for an empty magazine, which int16 can't hold, and dsdk
   doesn't change values. A tome of compact files only loads it as int16.
@@ -142,24 +147,28 @@ float64 and strings. A tome can hold both, and loads them as follows.
   only loads numpy `int8`, `int16` or `int32`. An integer column with missing
   values, because some matches lack it (`player_controller_id` in some 2023
   files) or it holds nulls, is the nullable type of its width, not float64.
-  polars has no such split; its narrow columns hold nulls as they are.
+  A flag narrowed from a column declared `Int64`, or one with missing
+  values, is the nullable `boolean`; a missing value stays missing. polars
+  has no such split; its narrow columns hold nulls as they are.
 - **Narrow integers can wrap in arithmetic.** pandas and polars keep int16 in
   element-wise arithmetic, so with int16 `money`, `money * 5` gives 14,464
   for 16,000. Sums and means widen and are safe. For analysis code,
   `get_dataframe(widen=True)` and `scan(widen=True)` return every integer
   column as a 64-bit integer (`Int16` becomes `Int64`) and every float
-  column as float64, with the values of the default load. The default load
-  is unchanged for tomes of old files.
+  column as float64, with the values of the default load. Flags stay bool
+  (`bool` or `boolean`). The default load is unchanged for tomes of old
+  files.
 - **Where it happens.** `build_basic_tomes` narrows each page as it builds
   it, with pyarrow or, when pyarrow can't join a page, with pandas. When the
   tome is finished, every page not yet at the tome's types is cast to them
   and written again ("Page narrowed" in the log): a page written before the
   first compact match turned up, a page narrowed to int8 when a later match
-  brought int16, and a page holding a value its own matches' narrow type
-  can't hold, which keeps that column wide until then. So every page holds
-  the tome's types, and a value that doesn't fit them stops the build there. The loaders narrow across pages, for tomes whose
-  pages differ, such as a `make_tome` tome continued after the format
-  changed. `make_tome` joins each page's frames with `pd.concat` as before,
+  brought int16, and a page holding a value that int8 or int16 can't hold,
+  which keeps that column wide until then, since a later match may bring a
+  wider type. So every page holds the tome's types, and a value that
+  doesn't fit them stops the build there. The loaders narrow across pages,
+  for tomes whose pages differ, such as a `make_tome` tome continued after
+  the format changed. `make_tome` joins each page's frames with `pd.concat` as before,
   so a page that mixes old and compact matches is widened there.
   `iterate_pages` reads each page as it is.
 
@@ -233,9 +242,9 @@ built.dates                   # "2023-11-10,2026-07-10": the header's match_date
   `Int64`, even though some csds versions declare the id columns `int64`.
   The builder works this out from two-row stand-ins of each distinct file
   schema, and checks that the joined page reads back with those dtypes. When
-  it doesn't, or pyarrow can't join the tables (bool in some matches and
-  int64 in others, for example), that page is built with `pd.concat`, as
-  `make_tome` would, and the builder logs "Page built with pandas".
+  it doesn't, or pyarrow can't join the tables, that page is built with
+  `pd.concat`, as `make_tome` would, and the builder logs "Page built with
+  pandas".
 - **Categories.** A dictionary (category) column, such as `place_name` in
   the compact `player_status`, is decoded to its values as each match is
   read, so pyarrow joins matches whose dictionaries differ. pandas reads it
