@@ -181,10 +181,8 @@ CASES = {
         (zstd, frame(a=[1.5, np.nan])),
         (zstd, frame(a=ints(3, None))),
     ],
-    "int32 then int64": [
-        (zstd, frame(a=np.array([1, 2], dtype="int32"))),
-        (zstd, frame(a=[3, 4])),
-    ],
+    # A column narrow on some pages and int64 on others is narrowed instead:
+    # narrowing_test.py.
     "a column added on a later page": [
         (zstd, frame(a=[1, 2])),
         (zstd, frame(a=[3, 4], b=[1.5, 2.5], c=["x", "y"])),

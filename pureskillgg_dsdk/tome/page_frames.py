@@ -11,6 +11,12 @@ int64 on some pages and double on others. Any other column whose type
 differs between pages, or that some pages lack, is read page by page and
 joined with ``pd.concat``, as before, because pandas picks its dtype in ways
 pyarrow doesn't (and differently in pandas 2 and 3).
+
+Two exceptions keep narrow columns narrow (see `narrowing`). A column that is
+int64 or float64 on some pages and narrower on others is read page by page,
+its wide pages narrowed with checked casts, instead of widened. And a narrow
+integer column with missing values is pandas' nullable type of its width
+(``Int8``, ``Int16``, ``Int32``) instead of float64.
 """
 
 import json
@@ -23,6 +29,16 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
+
+from .constants import MATCH_KEY_COLUMN
+from .narrowing import (
+    is_wide,
+    missing_as_nullable,
+    narrow_table,
+    narrow_target,
+    resolved_narrow_int,
+    widen_frame,
+)
 
 if TYPE_CHECKING:
     import polars as pl
@@ -145,31 +161,131 @@ def select_columns(pages: Iterable[PageInfo], columns: Optional[Sequence[str]]):
 
 
 def read_pages_pandas(
-    paths: Sequence[str], columns: Optional[Sequence[str]] = None
+    paths: Sequence[str],
+    columns: Optional[Sequence[str]] = None,
+    *,
+    widen: bool = False,
 ) -> pd.DataFrame:
-    """Read the pages at `paths` into one pandas frame with a RangeIndex."""
+    """
+    Read the pages at `paths` into one pandas frame with a RangeIndex. With
+    `widen`, integer columns are int64 and float columns float64.
+    """
     pages = [read_page_info(path) for path in paths]
     names = select_columns(pages, columns)
     live = [page for page in pages if not page.is_empty]
+    frame = _read_columns(pages, live, names)
+    nullable = missing_as_nullable(dict(frame.dtypes), _narrow_int_columns(names, live))
+    for name, dtype in nullable.items():
+        frame[name] = frame[name].astype(dtype)
+    if widen:
+        widen_frame(frame)
+    frame.attrs = _concat_attrs(live)
+    return frame
 
+
+def _read_columns(pages, live, names) -> pd.DataFrame:
+    """
+    The columns `names`: steady ones in one dataset scan, drifting ones page
+    by page with pd.read_parquet, and narrowed ones page by page with pyarrow.
+    """
+    narrowing = _plan_narrowing(names, live)
     steady = {}
     for name in names:
+        if name in narrowing:
+            continue
         plan = _plan_steady_column(name, live)
         if plan is not None:
             steady[name] = plan
-    drifting = [name for name in names if name not in steady]
+    drifting = [name for name in names if name not in steady and name not in narrowing]
 
-    if drifting and not steady:
-        frame = _read_page_by_page(pages, drifting)[drifting]
-    else:
-        frame = _read_steady_columns(live, steady)
-        if drifting:
-            drift_frame = _read_page_by_page(pages, drifting)
-            for position, name in enumerate(names):
-                if name in drifting:
-                    frame.insert(position, name, drift_frame[name])
-    frame.attrs = _concat_attrs(live)
+    if drifting and not steady and not narrowing:
+        return _read_page_by_page(pages, drifting)[drifting]
+    frame = _read_steady_columns(live, steady)
+    others = {}
+    if drifting:
+        drift_frame = _read_page_by_page(pages, drifting)
+        others.update((name, drift_frame[name]) for name in drifting)
+    if narrowing:
+        others.update(_read_narrowed(pages, narrowing))
+    for position, name in enumerate(names):
+        if name in others:
+            frame.insert(position, name, others[name])
     return frame
+
+
+def _plan_narrowing(names, pages):
+    """The columns some pages hold wide and others narrow, with the narrow type."""
+    plan = {}
+    for name in names:
+        types = {page.fields[name].type for page in pages if name in page.fields}
+        target = narrow_target(name, types)
+        if target is not None:
+            plan[name] = target
+    return plan
+
+
+def _narrow_int_columns(names, pages):
+    """
+    The columns that every page holding them holds as narrow integers, once
+    narrowed, with the type they join to.
+    """
+    narrowing = _plan_narrowing(names, pages)
+    result = {}
+    for name in names:
+        types = [
+            narrowing.get(name, page.fields[name].type)
+            for page in pages
+            if name in page.fields
+        ]
+        data_type = resolved_narrow_int(types)
+        if data_type is not None:
+            result[name] = data_type
+    return result
+
+
+def _describe_page_rows(page):
+    """Name a row of a page for a NarrowingError: by its match key if it has one."""
+
+    def describe(row):
+        where = f"page {page.path!r}, row {row}"
+        if MATCH_KEY_COLUMN not in page.fields:
+            return where
+        key = pq.read_table(page.path, columns=[MATCH_KEY_COLUMN])
+        return f"match {key.column(0)[row].as_py()!r} ({where})"
+
+    return describe
+
+
+def _read_narrowed(pages, plan) -> dict:
+    """
+    The narrowed columns, read page by page with pyarrow, each page's wide
+    columns cast to the narrow type, then joined with ``pd.concat``.
+    """
+    frames = []
+    for page in pages:
+        present = [name for name in plan if name in page.fields]
+        if not present:
+            frames.append(pd.DataFrame(index=pd.RangeIndex(page.num_rows)))
+            continue
+        table = pq.read_table(page.path, columns=present)
+        metadata = None
+        if page.pandas_metadata is not None:
+            metadata = dict(page.pandas_metadata)
+            metadata["index_columns"] = []
+            metadata["columns"] = [
+                page.columns_metadata[name]
+                for name in present
+                if name in page.columns_metadata
+            ]
+        table = table.replace_schema_metadata(
+            None
+            if metadata is None
+            else {_PANDAS_METADATA: json.dumps(metadata).encode("utf-8")}
+        )
+        table = narrow_table(table, plan, _describe_page_rows(page))
+        frames.append(table.to_pandas(types_mapper=_types_mapper()))
+    frame = pd.concat(frames, ignore_index=True)
+    return {name: frame[name] for name in plan}
 
 
 def _plan_steady_column(name, pages):
@@ -359,27 +475,86 @@ def import_polars():
 
 
 def scan_pages_polars(
-    paths: Sequence[str], columns: Optional[Sequence[str]] = None
+    paths: Sequence[str],
+    columns: Optional[Sequence[str]] = None,
+    *,
+    widen: bool = False,
 ) -> "pl.LazyFrame":
     """
     Scan the pages at `paths` as one polars LazyFrame. The pandas index
     columns of old pages are dropped, and pages whose schemas drift are
-    joined with ``how="diagonal_relaxed"``.
+    joined with ``how="diagonal_relaxed"``. A column some pages hold wide and
+    others narrow is narrowed on the wide pages; their values are checked
+    now, with pyarrow, so a value that doesn't fit raises here. With `widen`,
+    integer columns are Int64 and float columns Float64.
     """
     polars = import_polars()
     pages = [read_page_info(path) for path in paths]
     names = select_columns(pages, columns)
+    live = [page for page in pages if not page.is_empty]
+    narrowing = _plan_narrowing(names, live)
+    _check_narrowing(live, narrowing)
     frames = []
-    for page in pages:
-        if page.is_empty:
-            continue
+    for page in live:
         frame = polars.scan_parquet(page.path, hive_partitioning=False, glob=False)
         if page.index_columns:
             frame = frame.drop(page.index_columns)
+        casts = [
+            polars.col(name).cast(_polars_type(polars, target), strict=True)
+            for name, target in narrowing.items()
+            if name in page.fields and is_wide(page.fields[name].type)
+        ]
+        if casts:
+            frame = frame.with_columns(casts)
         frames.append(frame)
     if len(frames) == 0:
         return polars.LazyFrame()
     lazy = polars.concat(frames, how="diagonal_relaxed")
     if columns is not None:
         lazy = lazy.select(names)
+    if widen:
+        lazy = _widen_lazy(polars, lazy)
     return lazy
+
+
+def _check_narrowing(pages, plan):
+    """Raise NarrowingError for a value of a wide page that doesn't fit."""
+    for page in pages:
+        wide = {
+            name: target
+            for name, target in plan.items()
+            if name in page.fields and is_wide(page.fields[name].type)
+        }
+        if wide:
+            table = pq.read_table(page.path, columns=list(wide))
+            narrow_table(table, wide, _describe_page_rows(page))
+
+
+def _polars_type(polars, data_type):
+    """The polars dtype of a narrowing target."""
+    return {
+        pa.int8(): polars.Int8,
+        pa.int16(): polars.Int16,
+        pa.int32(): polars.Int32,
+        pa.float32(): polars.Float32,
+    }[data_type]
+
+
+def _widen_lazy(polars, lazy):
+    """Cast the narrow integer and float columns of a LazyFrame to 64 bits."""
+    # Tuples, not sets: a polars dtype equals its class but needn't hash like it.
+    narrow_ints = (
+        polars.Int8,
+        polars.Int16,
+        polars.Int32,
+        polars.UInt8,
+        polars.UInt16,
+        polars.UInt32,
+    )
+    casts = []
+    for name, dtype in lazy.collect_schema().items():
+        if dtype in narrow_ints:
+            casts.append(polars.col(name).cast(polars.Int64))
+        elif dtype == polars.Float32:
+            casts.append(polars.col(name).cast(polars.Float64))
+    return lazy.with_columns(casts) if casts else lazy

@@ -367,11 +367,12 @@ def test_columns_instruction(tmp_path, drift_collection):
 
 
 @pytest.mark.parametrize("compact_every", [256, 2, 1])
-def test_page_built_with_pandas_when_arrow_cannot_match_it(
+def test_categories_are_decoded_and_built_with_pyarrow(
     tmp_path, compact_every, monkeypatch
 ):
-    # pyarrow joins differing categories into one categorical; pandas makes
-    # them object, so this page is built with pandas.
+    # pd.concat makes categories that differ between matches strings. The
+    # builder decodes each match's dictionary, so pyarrow joins them into the
+    # same strings, and no page needs pandas.
     monkeypatch.setattr(builder, "_COMPACT_EVERY", compact_every)
     root = tmp_path / "ds"
     for i, categories in enumerate([["x", "y"], ["z"]]):
@@ -393,6 +394,32 @@ def test_page_built_with_pandas_when_arrow_cannot_match_it(
     assert not isinstance(
         frame(built.tomes["events"])["kind"].dtype, pd.CategoricalDtype
     )
+    assert log.named("Page built with pandas") == []
+
+
+@pytest.mark.parametrize("compact_every", [256, 2, 1])
+def test_page_built_with_pandas_when_arrow_cannot_match_it(
+    tmp_path, compact_every, monkeypatch
+):
+    # pyarrow can't join bool with int64; pd.concat makes them int64, so this
+    # page is built with pandas.
+    monkeypatch.setattr(builder, "_COMPACT_EVERY", compact_every)
+    root = tmp_path / "ds"
+    for i, flags in enumerate([[True, False], [0, 1]]):
+        channel = pd.DataFrame({"flag": flags, "n": [i] * len(flags)})
+        write_match(root, f"m{i}", {"events": channel}, day=15 + i)
+    log = RecordingLogger()
+    curator = make_curator(tmp_path / "tomes", root, log=log)
+    old = build_the_old_way(curator, ["events"])
+
+    built = curator.build_basic_tomes(
+        ["events"],
+        tome_name="new_{channel}.{dates}",
+        header_tome_name="h.2022-01-01,2022-01-02",
+    )
+
+    assert_same_tome(built.tomes["events"], old["events"])
+    assert frame(built.tomes["events"])["flag"].dtype == "int64"
     assert len(log.named("Page built with pandas")) == 1
 
 

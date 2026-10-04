@@ -275,6 +275,7 @@ class TomeCuratorFs:
         *,
         columns: Optional[Sequence[str]] = None,
         library: Literal["pandas"] = "pandas",
+        widen: bool = False,
     ) -> pd.DataFrame: ...
 
     @overload
@@ -284,9 +285,10 @@ class TomeCuratorFs:
         *,
         columns: Optional[Sequence[str]] = None,
         library: Literal["polars"],
+        widen: bool = False,
     ) -> "pl.DataFrame": ...
 
-    def get_dataframe(self, tome_name, *, columns=None, library="pandas"):
+    def get_dataframe(self, tome_name, *, columns=None, library="pandas", widen=False):
         """
         Get the dataframe from a tome.
 
@@ -299,6 +301,9 @@ class TomeCuratorFs:
         library : {"pandas", "polars"}, default="pandas"
             "polars" returns a polars DataFrame, and needs the ``polars``
             extra (``pureskillgg-dsdk[polars]``).
+        widen : bool, default=False
+            Every integer column as a 64-bit integer and every float column
+            as float64 (see `TomeLoader.get_dataframe`).
 
         Returns
         -------
@@ -306,9 +311,9 @@ class TomeCuratorFs:
             The tome's data. A pandas frame has one ``RangeIndex``.
         """
         loader = self.get_loader(tome_name)
-        return loader.get_dataframe(columns=columns, library=library)
+        return loader.get_dataframe(columns=columns, library=library, widen=widen)
 
-    def scan(self, tome_name: str) -> "pl.LazyFrame":
+    def scan(self, tome_name: str, *, widen: bool = False) -> "pl.LazyFrame":
         """
         Scan a tome as a polars LazyFrame. Needs the ``polars`` extra.
 
@@ -316,13 +321,15 @@ class TomeCuratorFs:
         ----------
         tome_name : str
             Name of the tome.
+        widen : bool, default=False
+            Integer columns as Int64 and float columns as Float64.
 
         Returns
         -------
         pl.LazyFrame
             The tome's data, read only as far as a query needs.
         """
-        return self.get_loader(tome_name).scan()
+        return self.get_loader(tome_name).scan(widen=widen)
 
     def get_keyset(self, tome_name: str) -> list:
         """
