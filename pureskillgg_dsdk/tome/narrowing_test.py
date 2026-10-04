@@ -2,10 +2,12 @@
 """
 Tomes that mix csds player tables in the old format (int64, float64, string
 place_name, pandas metadata) with the compact one (int8 to int32, float32, a
-dictionary place_name, rows by player then tick, no pandas metadata).
+dictionary place_name, rows by player then tick).
 
-The compact files are derived from dsdk's own fixtures by `compact`, which
-stores a table the way csgo-ppp's compact writer does.
+The compact files are derived from dsdk's own fixtures. `compact` gives the
+compact types without pandas metadata; `written_by_csgo_ppp` stores a table
+as csgo-ppp writes it, with its derived motion columns kept float64 and
+pandas metadata that names the narrow types.
 """
 
 import glob
@@ -71,8 +73,8 @@ def fixture_table(match, channel, start=0):
     return pq.read_table(os.path.join(match, channel)).slice(start, ROWS)
 
 
-def compact(table, channel):
-    """The table as csgo-ppp's compact writer stores it."""
+def compact(table, channel, keep_float64=()):
+    """The table at the compact types, without pandas metadata."""
     table = table.drop_columns(
         [n for n in table.column_names if n.startswith("__index_level_")]
     )
@@ -81,7 +83,7 @@ def compact(table, channel):
         column = table.column(field.name)
         if field.name == "place_name":
             column = column.dictionary_encode()
-        elif pa.types.is_floating(field.type):
+        elif pa.types.is_floating(field.type) and field.name not in keep_float64:
             column = column.cast(pa.float32())
         elif pa.types.is_integer(field.type):
             column = column.cast(COMPACT_TYPES.get(field.name, pa.int8()))
@@ -91,6 +93,47 @@ def compact(table, channel):
             columns["player_controller_id"] = column.cast(pa.int8())
     return pa.table(columns).sort_by(
         [("player_id", "ascending"), ("tick", "ascending")]
+    )
+
+
+# csgo-ppp keeps the motion columns it derives in float64.
+DERIVED = (
+    "phi_vel",
+    "theta_vel",
+    "ang_vel",
+    "x_vel",
+    "y_vel",
+    "z_vel",
+    "speed_2d",
+    "movement_angle",
+    "movement_angle_diff",
+)
+
+
+def written_by_csgo_ppp(table, channel):
+    """
+    The table as csgo-ppp writes it: the compact types, and pandas metadata
+    that names them. pandas reads an integer as the nullable type of its
+    width, tick as numpy int32, burst_mode and is_silenced as the nullable
+    boolean, and place_name as a category.
+    """
+    table = compact(table, channel, keep_float64=DERIVED)
+    template = {}
+    for field in table.schema:
+        if pa.types.is_dictionary(field.type):
+            dtype = "category"
+        elif pa.types.is_integer(field.type) and field.name != "tick":
+            dtype = f"Int{field.type.bit_width}"
+        elif field.name in ("burst_mode", "is_silenced"):
+            dtype = "boolean"
+        else:
+            dtype = field.type.to_pandas_dtype()
+        template[field.name] = pd.Series([], dtype=dtype)
+    metadata = pa.Schema.from_pandas(
+        pd.DataFrame(template), preserve_index=False
+    ).pandas_metadata
+    return table.replace_schema_metadata(
+        {b"pandas": json.dumps(metadata).encode("utf8")}
     )
 
 
@@ -393,6 +436,74 @@ def test_a_compact_tome_stays_on_pyarrow(tmp_path, sources):
     place_name = built.tomes["player_status"].get_dataframe()["place_name"]
     assert pd.api.types.is_string_dtype(place_name.dtype)
     assert not isinstance(place_name.dtype, pd.CategoricalDtype)
+
+
+# Compact files as csgo-ppp writes them, with pandas metadata.
+
+
+@pytest.fixture
+def ppp_sources():
+    """As `sources`, with the compact matches as csgo-ppp writes them."""
+    first, _, third = FIXTURE_MATCHES
+    sources_ = {}
+    for name, match, start in [("m1", third, 0), ("m3", first, ROWS)]:
+        sources_[name] = {
+            ch: written_by_csgo_ppp(fixture_table(match, ch, start), ch)
+            for ch in CHANNELS
+        }
+    return sources_
+
+
+@pytest.mark.parametrize("path", ["pyarrow", "pandas"])
+@pytest.mark.parametrize("mixed", [False, True], ids=["compact only", "mixed"])
+@pytest.mark.parametrize("channel", CHANNELS)
+def test_compact_files_load_as_their_metadata_says(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    tmp_path, sources, ppp_sources, monkeypatch, channel, mixed, path
+):
+    chosen = {
+        name: (ppp_sources[name] if name in ppp_sources else sources[name])
+        for name in (["m0", "m1", "m2", "m3"] if mixed else ["m1", "m3"])
+    }
+    keys = write_collection(tmp_path / "ds", chosen)
+    if path == "pandas":
+        # As when pyarrow can't join a page's tables.
+        monkeypatch.setattr(builder, "realize", lambda *args, **kwargs: None)
+    log = RecordingLogger()
+    curator = make_curator(tmp_path / "tomes", tmp_path / "ds", log=log)
+    loader = build(curator, [channel], max_page_size_mb=0.3).tomes[channel]
+
+    df = loader.get_dataframe()
+
+    # Each column loads as pandas reads it from a compact file, but for
+    # place_name, which is decoded, and current_ammo, which a mixed tome keeps
+    # at Int64 for the old files' 4294967295.
+    as_read = ppp_sources["m1"][channel].to_pandas()
+    for name in as_read.columns:
+        if name == "place_name":
+            assert pd.api.types.is_string_dtype(df[name].dtype)
+            assert not isinstance(df[name].dtype, pd.CategoricalDtype)
+        elif name == "current_ammo" and mixed:
+            assert df[name].dtype == "Int64"
+        else:
+            assert df[name].dtype == as_read[name].dtype, name
+    assert df["tick"].dtype == "int32"
+    assert df["player_id"].dtype == "Int32"
+    if channel == "player_vector":
+        assert df["x_pos"].dtype == "float32"
+        assert df["x_vel"].dtype == "float64"
+    else:
+        assert df["burst_mode"].dtype == "boolean"
+        assert df["has_c4"].dtype == "bool"
+    assert_rows_are_the_source(df, keys, chosen, channel)
+    if path == "pyarrow":
+        assert log.named("Page built with pandas") == []
+
+    pytest.importorskip("polars")
+    polars_df = loader.get_dataframe(library="polars")
+    for name in df.columns:
+        assert to_python(polars_df[name].to_list()) == to_python(
+            df[name].tolist()
+        ), name
 
 
 # Values that don't fit stop the build.
