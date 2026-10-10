@@ -19,11 +19,12 @@ class AdxDataset:
 
     def get_latest_revision(self):
         self._init()
-        res = self._client.list_data_set_revisions(DataSetId=self.dataset_id)
-        revisions = res.get("Revisions", [])
-        if len(revisions) == 0:
-            return None
-        return revisions[0]
+        paginator = self._client.get_paginator("list_data_set_revisions")
+        for page in paginator.paginate(DataSetId=self.dataset_id):
+            for rev in page.get("Revisions", []):
+                if not is_revoked(rev):
+                    return rev
+        return None
 
     def get_revisions(self, start_date=None, end_date=None, /):
         self._init()
@@ -35,7 +36,8 @@ class AdxDataset:
         return [
             rev
             for rev in revisions
-            if is_date_between(rev["Comment"], start_date, end_date)
+            if not is_revoked(rev)
+            and is_date_between(rev["Comment"], start_date, end_date)
         ]
 
     def export_revisions(self, start_date=None, end_date=None, /):
@@ -91,6 +93,11 @@ class AdxDataset:
         self._dataset = res
         self.dataset_name = res.get("Name")
         self._log = self._log.bind(dataset_name=self.dataset_name)
+
+
+def is_revoked(revision):
+    """A revoked revision has had its assets removed, so it can't be exported."""
+    return bool(revision.get("Revoked", False))
 
 
 def is_date_between(date, start_date, end_date):
