@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Pin workflow runners to `ubuntu-24.04`.
+- Allow pyarrow 26 and polars 2.
+- Build with uv_build 0.13 and run CI on uv 0.13.0.
+- Refresh the lock to the newest allowed versions.
 
 ## 4.0.0
 
