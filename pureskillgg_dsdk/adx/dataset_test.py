@@ -58,6 +58,49 @@ def test_dataset_is_fetched_once():
     assert dataset.dataset_name == "Test dataset"
 
 
+REVISIONS_WITH_REVOKED = [
+    {"Id": "rev-4", "Comment": "2026-10-09T00:00:00.000Z", "Revoked": True},
+    {"Id": "rev-3", "Comment": "2026-10-08T00:00:00.000Z"},
+    {"Id": "rev-2", "Comment": "2026-10-07T00:00:00.000Z", "Revoked": False},
+    {"Id": "rev-1", "Comment": "2025-07-18T00:00:00.000Z", "Revoked": True},
+]
+
+
+class StubPaginator:
+    def __init__(self, pages):
+        self._pages = pages
+
+    def paginate(self, DataSetId):
+        assert DataSetId == "test-dataset"
+        return iter(self._pages)
+
+
+class StubDataExchangeWithRevoked(StubDataExchange):
+    def list_data_set_revisions(self, DataSetId):
+        assert DataSetId == "test-dataset"
+        return {"Revisions": REVISIONS_WITH_REVOKED}
+
+    def get_paginator(self, operation):
+        assert operation == "list_data_set_revisions"
+        return StubPaginator(
+            [
+                {"Revisions": REVISIONS_WITH_REVOKED[:2]},
+                {"Revisions": REVISIONS_WITH_REVOKED[2:]},
+            ]
+        )
+
+
+def test_revoked_revisions_are_skipped():
+    dataset = AdxDataset(dataset_id="test-dataset", writer=None)
+    dataset._client = StubDataExchangeWithRevoked()
+
+    assert dataset.get_latest_revision()["Id"] == "rev-3"
+    assert [rev["Id"] for rev in dataset.get_revisions()] == ["rev-3", "rev-2"]
+    assert [rev["Id"] for rev in dataset.get_revisions("2025-01-01", "2026-10-08")] == [
+        "rev-2"
+    ]
+
+
 def test_export_revision_failure_logs_exc_info():
     log = RecordingLog()
     dataset = create_dataset(writer=FailingWriter(), log=log)

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- Skip revoked AWS Data Exchange revisions when listing revisions, picking the latest one, and exporting a date range. A revoked revision has no assets, so exporting it failed, and exporting every revision stopped at the first revoked one.
+
 ## 4.0.2
 
 ### Changed
