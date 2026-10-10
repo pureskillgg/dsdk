@@ -5,8 +5,19 @@ import pytest
 from .dataset import AdxDataset, is_date_between
 
 
+class StubPaginator:
+    def __init__(self, pages):
+        self._pages = pages
+
+    def paginate(self, DataSetId):
+        assert DataSetId == "test-dataset"
+        return iter(self._pages)
+
+
 class StubDataExchange:
     """Answers from memory; nothing here reaches AWS Data Exchange."""
+
+    pages = [{"Revisions": [{"Id": "rev-2"}, {"Id": "rev-1"}]}]
 
     def __init__(self):
         self.get_data_set_calls = 0
@@ -15,9 +26,9 @@ class StubDataExchange:
         self.get_data_set_calls += 1
         return {"Id": DataSetId, "Name": "Test dataset"}
 
-    def list_data_set_revisions(self, DataSetId):
-        assert DataSetId == "test-dataset"
-        return {"Revisions": [{"Id": "rev-2"}, {"Id": "rev-1"}]}
+    def get_paginator(self, operation):
+        assert operation == "list_data_set_revisions"
+        return StubPaginator(self.pages)
 
     def get_revision(self, DataSetId, RevisionId):
         assert DataSetId == "test-dataset"
@@ -66,28 +77,13 @@ REVISIONS_WITH_REVOKED = [
 ]
 
 
-class StubPaginator:
-    def __init__(self, pages):
-        self._pages = pages
-
-    def paginate(self, DataSetId):
-        assert DataSetId == "test-dataset"
-        return iter(self._pages)
-
-
 class StubDataExchangeWithRevoked(StubDataExchange):
-    def list_data_set_revisions(self, DataSetId):
-        assert DataSetId == "test-dataset"
-        return {"Revisions": REVISIONS_WITH_REVOKED}
-
-    def get_paginator(self, operation):
-        assert operation == "list_data_set_revisions"
-        return StubPaginator(
-            [
-                {"Revisions": REVISIONS_WITH_REVOKED[:2]},
-                {"Revisions": REVISIONS_WITH_REVOKED[2:]},
-            ]
-        )
+    # The first page holds only a revoked revision, so the latest usable one
+    # is on the second page.
+    pages = [
+        {"Revisions": REVISIONS_WITH_REVOKED[:1]},
+        {"Revisions": REVISIONS_WITH_REVOKED[1:]},
+    ]
 
 
 def test_revoked_revisions_are_skipped():

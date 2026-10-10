@@ -19,11 +19,12 @@ class AdxDataset:
 
     def get_latest_revision(self):
         self._init()
-        res = self._client.list_data_set_revisions(DataSetId=self.dataset_id)
-        revisions = [rev for rev in res.get("Revisions", []) if not is_revoked(rev)]
-        if len(revisions) == 0:
-            return None
-        return revisions[0]
+        paginator = self._client.get_paginator("list_data_set_revisions")
+        for page in paginator.paginate(DataSetId=self.dataset_id):
+            for rev in page.get("Revisions", []):
+                if not is_revoked(rev):
+                    return rev
+        return None
 
     def get_revisions(self, start_date=None, end_date=None, /):
         self._init()
