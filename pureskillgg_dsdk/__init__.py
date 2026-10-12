@@ -14,6 +14,7 @@ from .adx import (
     export_multiple_adx_dataset_revisions_to_s3,
     enable_auto_exporting_adx_dataset_revisions_to_s3,
     disable_auto_exporting_adx_dataset_revisions_to_s3,
+    extract_adx_zips,
 )
 from .sqs import (
     SqsConsumer,

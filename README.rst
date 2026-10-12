@@ -94,8 +94,9 @@ Modules
      - ``TomeCuratorFs``, ``create_tome_curator``
      - the makenew-pyskill template's notebooks
    * - ``adx``
-     - ``get_adx_dataset_revisions``, ``download_adx_dataset_revision``, and
-       the ``export_*`` and ``*_auto_exporting_*`` functions
+     - ``get_adx_dataset_revisions``, ``download_adx_dataset_revision``,
+       ``extract_adx_zips``, and the ``export_*`` and ``*_auto_exporting_*``
+       functions
      - the makenew-pyskill template's notebooks
 
 ``pureskillgg-csgo-dsdk`` uses this package in its tests only.

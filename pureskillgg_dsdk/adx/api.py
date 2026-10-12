@@ -1,4 +1,5 @@
 from .dataset import AdxDataset
+from .unzip import extract_adx_zips
 from .writer_fs import AdxDatasetWriterFs
 from .writer_s3 import AdxDatasetWriterS3
 
@@ -9,7 +10,7 @@ def get_adx_dataset_revisions(dataset_id, /, *, start_date=None, end_date=None):
 
 
 def download_adx_dataset_revision(
-    root_path, dataset_id, revision_id=None, /, *, prefix=None
+    root_path, dataset_id, revision_id=None, /, *, prefix=None, extract=True
 ):
     writer = AdxDatasetWriterFs(root_path=root_path, prefix=prefix)
     client = AdxDataset(dataset_id=dataset_id, writer=writer)
@@ -21,6 +22,11 @@ def download_adx_dataset_revision(
         revision_id = rev["Id"]
 
     client.export_revision(revision_id)
+
+    # Matches delivered as one zip each are unpacked into the loose layout, so
+    # what lands on disk reads the same whichever way the revision held them.
+    if extract:
+        extract_adx_zips(root_path, prefix=prefix)
 
 
 def export_single_adx_dataset_revision_to_s3(

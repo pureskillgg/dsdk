@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Added
+
+- `extract_adx_zips(root_path, prefix=None, delete_zips=False)`: AWS Data Exchange now delivers each match as one zip, `csds/YYYY/MM/DD/<id>.zip`, instead of one file per channel. This extracts every such zip under a folder back into the loose layout (`<id>/csds` and `<id>/<channel>`) that `DsReaderFs` and the tome builders read. Files already extracted are skipped, so a rerun finishes an interrupted one. A zip whose entries aren't all inside its own match folder is skipped and nothing is written. Use it after exporting revisions to S3 and syncing them down.
+
+### Changed
+
+- `download_adx_dataset_revision` extracts match zips after downloading, so a download lands in the loose layout whichever way the revision holds its matches. Pass `extract=False` to keep only the zips.
+
 ### Fixed
 
 - Skip revoked AWS Data Exchange revisions when listing revisions, picking the latest one, and exporting a date range. A revoked revision has no assets, so exporting it failed, and exporting every revision stopped at the first revoked one.
