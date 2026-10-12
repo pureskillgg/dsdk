@@ -34,7 +34,13 @@ def extract_adx_zips(root_path, /, *, prefix=None, delete_zips=False, log=None):
 
     count = 0
     for zip_path in sorted(_find_zips(root)):
-        if not _extract_zip(root, zip_path):
+        try:
+            extracted = _extract_zip(root, zip_path)
+        except zipfile.BadZipFile as err:
+            # A truncated or corrupt zip stops only itself, not the scan.
+            log.warning("Skipped Unreadable Zip", path=zip_path, error=str(err))
+            continue
+        if not extracted:
             log.warning("Skipped Zip That Is Not A Match", path=zip_path)
             continue
         if delete_zips:
@@ -68,8 +74,12 @@ def _extract_zip(root, zip_path):
                 continue
             os.makedirs(os.path.dirname(target), exist_ok=True)
             partial = target + ".partial"
-            with archive.open(info) as source, open(partial, "wb") as sink:
-                shutil.copyfileobj(source, sink)
+            try:
+                with archive.open(info) as source, open(partial, "wb") as sink:
+                    shutil.copyfileobj(source, sink)
+            except BaseException:
+                os.remove(partial)
+                raise
             os.replace(partial, target)
     return True
 

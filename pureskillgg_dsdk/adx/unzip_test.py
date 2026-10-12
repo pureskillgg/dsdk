@@ -79,6 +79,35 @@ def test_skips_a_zip_that_is_not_a_match(tmp_path):
     assert other.exists()
 
 
+def test_skips_an_unreadable_zip_and_extracts_the_rest(tmp_path):
+    broken = tmp_path / "csds/2022/05/15/broken.zip"
+    broken.parent.mkdir(parents=True)
+    broken.write_bytes(b"not a zip")
+    zip_match(tmp_path)
+
+    assert extract_adx_zips(str(tmp_path)) == 1
+
+    assert (tmp_path / MATCH_KEY / "csds").is_file()
+    assert broken.exists()
+
+
+def test_a_corrupt_entry_leaves_no_partial_file(tmp_path):
+    zip_path = zip_match(tmp_path)
+    data = bytearray(zip_path.read_bytes())
+    with zipfile.ZipFile(zip_path) as archive:
+        first = archive.infolist()[0]
+    # Flip a byte inside the first entry's data so its CRC check fails.
+    offset = first.header_offset + 30 + len(first.filename) + len(first.extra) + 10
+    data[offset] ^= 0xFF
+    zip_path.write_bytes(bytes(data))
+
+    assert extract_adx_zips(str(tmp_path)) == 0
+
+    extracted = tmp_path / MATCH_KEY / Path(first.filename).name
+    assert not extracted.exists()
+    assert not Path(f"{extracted}.partial").exists()
+
+
 def test_skips_a_zip_with_an_entry_outside_its_match(tmp_path):
     zip_path = tmp_path / f"{MATCH_KEY}.zip"
     zip_path.parent.mkdir(parents=True)
