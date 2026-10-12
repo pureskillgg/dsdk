@@ -6,3 +6,4 @@ from .api import (
     enable_auto_exporting_adx_dataset_revisions_to_s3,
     disable_auto_exporting_adx_dataset_revisions_to_s3,
 )
+from .unzip import extract_adx_zips
