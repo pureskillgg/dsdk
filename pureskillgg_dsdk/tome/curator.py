@@ -167,8 +167,9 @@ class TomeCuratorFs:
         max_page_size_mb: float | None = DEFAULT_MAX_PAGE_SIZE_MB,
         compression: str | None = DEFAULT_PAGE_COMPRESSION,
         read_threads: int = DEFAULT_READ_THREADS,
-        behavior_if_complete: str = "pass",
+        behavior_if_complete: str = None,
         behavior_if_partial: str = "overwrite",
+        resume: bool = None,
     ) -> BasicTomes:
         """
         Build the header tome and one tome per channel, visiting each match once.
@@ -187,7 +188,10 @@ class TomeCuratorFs:
         Tomes are written to a staging folder, ``tome/<ds_type>/.building``,
         during the walk, and moved to their names at the end, once the
         header's dates are known. An interrupted build leaves no partial
-        channel tome, and the next call starts over.
+        channel tome, and the next call starts over, unless it passes
+        ``resume=True`` (continue where the interrupted build stopped) or
+        ``behavior_if_complete="extend"`` (add new matches to finished
+        tomes).
 
         Parameters
         ----------
@@ -219,13 +223,48 @@ class TomeCuratorFs:
             matches in header order whatever the count, and pages come out
             the same. 0 or 1 reads each match in turn. Reading from a hard
             disk, write the tomes to a different disk.
-        behavior_if_complete : {"pass", "overwrite", "fail"}
+        behavior_if_complete : {"pass", "overwrite", "fail", "extend"}, default="pass"
             For a complete header or channel tome: keep it, build it again,
-            or raise. Overwriting the header rescans the collection.
+            raise, or add the matches it lacks. Overwriting the header
+            rescans the collection. If None, the environment variable
+            ``PURESKILLGG_TOME_BEHAVIOR_IF_COMPLETE`` is used when it is set.
+
+            "extend" is for a complete header: the matches of the
+            collection (or of ``keys``) that its keyset lacks are read, and
+            only they; they are added to the header and to every channel
+            tome as new pages, numbered after the last, and a type that
+            their columns widen is written again on the old pages that hold
+            it. A channel tome the collection has no tome for yet is built
+            over all the matches. Matches are appended in the order they are
+            found, after the ones already there. The tomes keep their names,
+            so ``tome_name`` must not use ``{dates}``, which changes when
+            matches are added: use ``"basic_{channel}"``. Tomes the
+            collection has no new match for are not touched, and a call with
+            nothing new reads no match. The new matches reach the channel
+            tomes first and the header last, and each tome changes in one
+            atomic step (its manifest), so a build that stops part-way leaves
+            every tome whole, and the next call completes the extension; it
+            also removes the page files such a build left unlisted. A channel
+            tome without the ``signatures`` field in its manifest (written by
+            dsdk 4.1.1 or earlier) is extended from the schemas of its pages.
         behavior_if_partial : {"overwrite", "pass", "fail"}
             For a partial header or channel tome, such as one `make_tome`
             left: build it again, leave it, or raise. A partial header is
             built again unless "fail".
+        resume : bool, default=False
+            Continue an interrupted build instead of starting over. The pages
+            it staged are kept, each channel continues after the last match
+            its pages hold, and only the channels a match still lacks are
+            read from it (the header is rebuilt, which reads each match's
+            header row). The result is the tomes a build without
+            interruption gives, row for row and type for type; pages may be
+            cut at other matches, and so is the order if matches came in
+            that sort before the staged ones (a tome lists the matches it
+            staged first, then the others, and a warning says so). A staged
+            tome built for other columns, or with a page that is missing, is
+            started over from that page. A staged match that is not found
+            any more raises. If None, ``PURESKILLGG_TOME_RESUME`` (1, true,
+            yes or on) is used when it is set.
 
         Returns
         -------
@@ -263,8 +302,11 @@ class TomeCuratorFs:
             max_page_size_mb=max_page_size_mb,
             compression=compression,
             read_threads=read_threads,
-            behavior_if_complete=behavior_if_complete,
+            behavior_if_complete=get_env_default(
+                "behavior_if_complete", behavior_if_complete, "pass"
+            ),
             behavior_if_partial=behavior_if_partial,
+            resume=get_env_flag("resume", resume),
             log=self._log,
         )
 
@@ -588,3 +630,27 @@ def get_env_option(name, value):
     if env_value is not None:
         return env_value
     raise Exception(f"Missing option {name}, pass in or set {key} in environment")
+
+
+def get_env_default(name, value, default):
+    """The value, else the option's environment variable if set, else the default."""
+    if value is not None:
+        return value
+    key = "_".join(["pureskillgg_tome", name]).upper()
+    env_value = os.environ.get(key)
+    return default if env_value is None or env_value == "" else env_value
+
+
+def get_env_flag(name, value) -> bool:
+    """A yes/no option: the value, else its environment variable (1/true/yes/on), else False."""
+    if value is not None:
+        return bool(value)
+    key = "_".join(["pureskillgg_tome", name]).upper()
+    env_value = os.environ.get(key, "").strip().lower()
+    if env_value in ("", "0", "false", "no", "off"):
+        return False
+    if env_value in ("1", "true", "yes", "on"):
+        return True
+    raise ValueError(
+        f"{key} must be 1, true, yes, on, 0, false, no or off, not {env_value!r}"
+    )
