@@ -40,8 +40,18 @@ from .constants import (
     warn_if_invalid_tome_name,
 )
 from .header_tome import create_subheader_tome_from_fs, get_manifest_key_paths_from_glob
+from .incremental import (
+    RESUME_FIELD,
+    SIGNATURES_FIELD,
+    decode_schemas,
+    encode_schemas,
+    next_page_number,
+    read_tome_state,
+    remove_orphans,
+    tome_schemas,
+)
 from .loader import TomeLoader
-from .manifest import TomeManifest
+from .manifest import TomeManifest, now_to_iso
 from .narrowing import (
     NarrowingError,
     flag_columns,
@@ -51,18 +61,21 @@ from .narrowing import (
     resolved_narrow_int,
     type_name,
 )
+from .page_frames import read_pages_pandas
 from .reader_fs import TomeReaderFs
-from .writer_fs import TomeWriterFs, ensure_dir
+from .writer_fs import TomeWriterFs, ensure_dir, replace_file
 
 DEFAULT_TOME_NAME = "basic_{channel}.{dates}"
 DEFAULT_MAX_PAGE_SIZE_MB = 256
 DEFAULT_READ_THREADS = 4
 # The header tome's rows are keyed by this column, a channel tome's by match_key.
 HEADER_KEY_COLUMN = "key"
-BEHAVIORS_IF_COMPLETE = ("pass", "overwrite", "fail")
+BEHAVIORS_IF_COMPLETE = ("pass", "overwrite", "fail", "extend")
 BEHAVIORS_IF_PARTIAL = ("overwrite", "pass", "fail")
 # Tomes are written here during the walk, and moved to their names at the end.
 STAGING_FOLDER = ".building"
+# The staged header of an extension: no channel is called this.
+_STAGED_HEADER = "__header__"
 
 _INDEX_COLUMN = "__index_level_0__"
 _PARQUET = "application/x-parquet"
@@ -113,6 +126,7 @@ def build_basic_tomes_from_fs(
     read_threads=DEFAULT_READ_THREADS,
     behavior_if_complete="pass",
     behavior_if_partial="overwrite",
+    resume=False,
     log=None,
 ) -> BasicTomes:
     """
@@ -133,6 +147,7 @@ def build_basic_tomes_from_fs(
         compression=compression,
         read_threads=read_threads,
         behaviors=(behavior_if_complete, behavior_if_partial),
+        resume=resume,
         log=log,
     ).run()
 
@@ -152,11 +167,18 @@ class _Build:
         compression,
         read_threads,
         behaviors,
+        resume=False,
         log,
     ):
         self._columns = normalize_channels(channels)
         check_tome_name(tome_name)
         check_behaviors(*behaviors)
+        if behaviors[0] == "extend" and "{dates}" in tome_name:
+            raise ValueError(
+                f"behavior_if_complete='extend' needs a tome_name without {{dates}}, "
+                f"not {tome_name!r}: the dates change when matches are added, and an "
+                f"extended tome keeps its name. Use a name such as 'basic_{{channel}}'."
+            )
         if read_threads < 0:
             raise ValueError(f"read_threads must be 0 or more, not {read_threads}")
         if max_page_size_mb is not None and max_page_size_mb <= 0:
@@ -178,6 +200,7 @@ class _Build:
         self._compression = compression
         self._threads = read_threads
         self._if_complete, self._if_partial = behaviors
+        self._resume = bool(resume)
         self._log = structlog.wrap_logger(
             log if log is not None else structlog.get_logger(),
             processors=[filter_ds_reader_logs],
@@ -188,8 +211,14 @@ class _Build:
         )
         self._proxies = _Proxies()
         self._header_keys = []
+        self._header_id = None
+        self._header_frame = None
 
     def run(self) -> BasicTomes:
+        if self._if_complete == "extend":
+            loader = self._loader(self._header_name)
+            if loader.exists and loader.is_complete:
+                return self._run_extend(loader)
         keep_header = self._keep_header()
         header = None
         if keep_header:
@@ -201,9 +230,13 @@ class _Build:
             paths = self._header_paths()
             channels = list(self._columns)
             header = self._scribe(self._header_name, is_header=True)
-        scribes = {c: self._scribe(self._staging_name(c)) for c in channels}
+        scribes = {
+            c: self._scribe(self._staging_name(c), resume_info=self._resume_info(c))
+            for c in channels
+        }
+        staged = self._resume_scribes(scribes) if self._resume else {}
         if header is not None or len(scribes) > 0:
-            self._walk(paths, header, scribes)
+            self._walk(paths, header, scribes, staged=staged)
         if header is not None:
             header.finish()
             dates = header_dates(self._loader(self._header_name).get_dataframe())
@@ -260,30 +293,58 @@ class _Build:
             if set(given) != set(keys):
                 raise ValueError(
                     f"keys differ from the matches of the complete header tome "
-                    f"{self._header_name}; pass behavior_if_complete='overwrite' "
-                    f"to rebuild it, or another header_tome_name"
+                    f"{self._header_name}; pass behavior_if_complete='extend' "
+                    f"(with a tome_name without {{dates}}) to add the keys it "
+                    f"lacks, behavior_if_complete='overwrite' to rebuild it, or "
+                    f"another header_tome_name"
                 )
         self._header_keys = keys
         return keys
 
     def _header_paths(self):
         """The manifests to build the header from."""
-        if self._keys is None:
-            paths = get_manifest_key_paths_from_glob(self._ds_root, self._ds_type)
-        else:
-            paths, dropped = dedupe(normalize_key(key) for key in self._keys)
-            self._log_duplicates(dropped)
+        paths = self._candidate_paths()
         if len(paths) == 0:
             raise ValueError(f"No matches to build a header from in {self._ds_root}")
         return paths
 
+    def _candidate_paths(self):
+        """The manifests of the matches on offer: the given keys, or every one on disk."""
+        if self._keys is None:
+            return get_manifest_key_paths_from_glob(self._ds_root, self._ds_type)
+        paths, dropped = dedupe(normalize_key(key) for key in self._keys)
+        self._log_duplicates(dropped)
+        return paths
+
     # The walk.
 
-    def _walk(self, paths, header, scribes):
-        """Visit each match once: manifest, header row and channels."""
-        # What an interrupted build left is started over.
-        self._remove_staging()
+    def _walk(  # pylint: disable=too-many-locals
+        self,
+        paths,
+        header,
+        scribes,
+        *,
+        staged=None,
+        published=None,
+        known=frozenset(),
+    ):
+        """
+        Visit each match once: manifest, header row and channels.
+
+        A channel whose tome already holds a match (``staged``: the pages of
+        an interrupted build that is resumed, ``published``: the finished
+        tome that is extended) doesn't read that match's file again. A match
+        in ``known`` is already in the header: its header row is left out.
+        """
+        # What an interrupted build left is started over, unless it is resumed.
+        if not self._resume:
+            self._remove_staging()
+        staged = staged or {}
         channels = list(scribes)
+        done = {
+            c: staged.get(c, frozenset()) | (published or {}).get(c, frozenset())
+            for c in channels
+        }
         for scribe in scribes.values():
             scribe.start()
         if header is not None:
@@ -291,24 +352,35 @@ class _Build:
         progress = _Progress(self._log, len(paths))
         seen = set()
         duplicates = 0
+        follow = _Follow(staged, published or {}, self._log)
 
         def read(path):
-            return self._read_match(path, channels, with_header=header is not None)
+            return self._read_match(
+                path,
+                channels,
+                with_header=header is not None,
+                done=done,
+                known=known,
+            )
 
-        for key, row, tables in _ordered_map(read, paths, self._threads):
+        for key, row, tables, present in _ordered_map(read, paths, self._threads):
             progress.step()
             if key in seen:
                 duplicates += 1
                 continue
             seen.add(key)
-            if header is not None:
+            if header is not None and key not in known:
                 self._header_keys.append(key)
                 header.add(key, row)
+            follow.step(key, present)
             for channel, table in tables:
                 scribes[channel].add(key, table)
         self._log_duplicates(duplicates)
+        follow.check(self._staging_path())
 
-    def _read_match(self, path, channels, *, with_header):
+    def _read_match(  # pylint: disable=too-many-locals
+        self, path, channels, *, with_header, done=None, known=frozenset()
+    ):
         manifest = DsReaderFs(
             root_path=self._ds_root, manifest_key=path, log=self._log
         ).read_manifest()
@@ -319,20 +391,25 @@ class _Build:
             # The header's key is the one the manifest declares, as in
             # create_header_tome; a manifest without one keys by its path.
             key = manifest.get("key") or path.replace(os.sep, "/")
-            if "header" not in by_name:
-                raise Exception("Channel header not found in replay.")
-            table = read_channel(self._channel_path(by_name["header"]), None, "header")
-            row = prepare_table(
-                table, [(HEADER_KEY_COLUMN, key), ("match_id", manifest["id"])]
-            )
+            if key not in known:
+                if "header" not in by_name:
+                    raise Exception("Channel header not found in replay.")
+                table = read_channel(
+                    self._channel_path(by_name["header"]), None, "header"
+                )
+                row = prepare_table(
+                    table, [(HEADER_KEY_COLUMN, key), ("match_id", manifest["id"])]
+                )
+        present = [channel for channel in channels if channel in by_name]
         tables = []
-        for channel in channels:
-            if channel not in by_name:
+        for channel in present:
+            if done and key in done[channel]:
+                # The tome has this match already: its file isn't read again.
                 continue
             file_path = self._channel_path(by_name[channel])
             table = read_channel(file_path, self._columns[channel], channel)
             tables.append((channel, prepare_table(table, [(MATCH_KEY_COLUMN, key)])))
-        return key, row, tables
+        return key, row, tables, present
 
     def _channel_path(self, entry) -> str:
         content_type = entry["contentType"]
@@ -342,7 +419,7 @@ class _Build:
 
     # Writing the tomes.
 
-    def _scribe(self, name, *, is_header=False):
+    def _scribe(self, name, *, is_header=False, resume_info=None):
         return _ArrowScribe(
             manifest=TomeManifest(
                 tome_name=name,
@@ -357,8 +434,22 @@ class _Build:
             proxies=self._proxies,
             key_column=HEADER_KEY_COLUMN if is_header else MATCH_KEY_COLUMN,
             tome_root=self._tome_root,
+            resume_info=resume_info,
             log=self._log,
         )
+
+    def _resume_info(self, channel, *, base=None, first_page=0) -> dict:
+        """
+        What a channel's staged tome is built for, kept in its manifest: a
+        staged tome built for anything else is not continued. ``base`` is the
+        id of the finished tome it extends, and ``first_page`` the number of
+        its first page.
+        """
+        return {
+            "columns": self._columns[channel],
+            "base": base,
+            "firstPage": first_page,
+        }
 
     def _staging_name(self, channel) -> str:
         return "/".join([STAGING_FOLDER, self._header_name, channel])
@@ -377,6 +468,67 @@ class _Build:
         except OSError:
             pass
 
+    # Resuming.
+
+    def _resume_scribes(self, scribes) -> dict:
+        """
+        Continue the staged tome of each channel that has one this build can
+        continue, and clear the staging folders of the others and of the
+        header, which is written only when it is finished. Returns the keys
+        each continued tome holds, by channel.
+        """
+        shutil.rmtree(
+            os.path.join(self._staging_path(), _STAGED_HEADER), ignore_errors=True
+        )
+        staged = {}
+        for channel, scribe in scribes.items():
+            state = self._staged_state(channel, scribe.resume_info)
+            if state is None:
+                shutil.rmtree(
+                    os.path.join(self._staging_path(), channel), ignore_errors=True
+                )
+                continue
+            scribe.resume(state)
+            staged[channel] = frozenset(state.keys)
+            if state.pages:
+                self._log.info(
+                    "Resuming staged tome",
+                    channel=channel,
+                    pages=len(state.pages),
+                    matches=len(state.keys),
+                )
+        return staged
+
+    def _staged_state(self, channel, info):
+        """The ledger of a channel's staged tome, or None when it can't be continued."""
+        loader = self._loader(self._staging_name(channel))
+        try:
+            if not loader.exists:
+                return None
+            manifest = loader.manifest
+        except (OSError, ValueError):
+            self._log.warning(
+                "Staged manifest unreadable: starting over", channel=channel
+            )
+            return None
+        if manifest.get(RESUME_FIELD) != info or (
+            manifest["pages"] and SIGNATURES_FIELD not in manifest
+        ):
+            self._log.warning(
+                "Staged tome can't be continued (built for other columns or "
+                "another tome, or by dsdk 4.1.1): starting over",
+                channel=channel,
+            )
+            return None
+        state = read_tome_state(self._tome_root, manifest)
+        if state.dropped:
+            self._log.warning(
+                "Staged pages missing or unreadable: reading their matches again",
+                channel=channel,
+                pages=state.dropped,
+            )
+        return state
+
     def _publish(self, channel, scribe, name):
         """Move a channel's staged tome to its name, with its header copy."""
         if scribe.key_count == 0:
@@ -387,25 +539,26 @@ class _Build:
         final = dict(
             manifest, tome=name, key=make_key(["tome", self._ds_type, name, "tome"])
         )
+        final.pop(RESUME_FIELD, None)
         # Mark the destination partial, with no pages, before any page file
         # there is replaced: an interrupted publish leaves a partial tome,
         # which the next build builds again, never a complete tome whose
         # pages are half old and half new.
         self._writer.write_manifest(dict(final, isComplete=False, pages=[]))
-        pages = []
-        for page in manifest["pages"]:
-            moved = dict(page)
-            for subtype in ("dataframe", "keyset"):
-                key = make_key(["tome", self._ds_type, name, page[subtype][subtype]])
-                destination = os.path.join(self._tome_root, key)
-                ensure_dir(destination)
-                os.replace(
-                    get_page_path_fs(self._tome_root, subtype, page), destination
-                )
-                moved[subtype] = dict(page[subtype], key=key)
-            pages.append(moved)
+        pages = [self._move_page(page, name) for page in manifest["pages"]]
         self._copy_header(name, scribe.keys)
         self._writer.write_manifest(dict(final, pages=pages))
+
+    def _move_page(self, page, name) -> dict:
+        """Move a staged page's files under the tome ``name``; the page entry as moved."""
+        moved = dict(page)
+        for subtype in ("dataframe", "keyset"):
+            key = make_key(["tome", self._ds_type, name, page[subtype][subtype]])
+            destination = os.path.join(self._tome_root, key)
+            ensure_dir(destination)
+            replace_file(get_page_path_fs(self._tome_root, subtype, page), destination)
+            moved[subtype] = dict(page[subtype], key=key)
+        return moved
 
     def _copy_header(self, name, keys):
         """The tome's header copy: the header rows of the matches it holds."""
@@ -421,6 +574,313 @@ class _Build:
             compression=self._compression,
             log=self._log,
         )
+
+    # Extending.
+
+    def _run_extend(  # pylint: disable=too-many-locals
+        self, header_loader
+    ) -> BasicTomes:
+        """
+        Add the matches that the complete header lacks to its tomes.
+
+        The new matches are read into new pages in the staging folder, with
+        the header rows to append and the narrowing of the whole tome worked
+        out; nothing in the finished tomes changes until all of that is done
+        (a value that doesn't fit raises here). Then each finished tome is
+        changed in turn: its new page files are moved beside the old ones
+        (not listed yet), its header copy is written as a new page, and its
+        manifest is replaced in one atomic step, which adds the pages. The
+        channels come first and the header last: the header is the list of
+        matches, so a build that stops in between finds the new matches
+        missing from it and adds them again, and the channels that already
+        hold them take nothing twice.
+        """
+        header_state = self._published_state(self._header_name, header_loader)
+        old_keys, dropped = dedupe(header_state.keys)
+        self._log_duplicates(dropped)
+        known = frozenset(old_keys)
+        self._header_keys = list(old_keys)
+        self._header_id = header_state.manifest["id"]
+        names = tome_names(self._tome_name, self._columns, None, self._header_name)
+        self._tidy(self._header_name, header_state.manifest)
+        extend, build = self._plan_channels(names)
+        paths = self._candidate_paths()
+        new_paths = [path for path in paths if normalize_key(path) not in known]
+        self._log.info(
+            "Extend Basic Tomes",
+            matches_in_header=len(known),
+            matches_on_offer=len(paths),
+            matches_new=len(new_paths),
+            tomes_extended=len(extend),
+            tomes_built=len(build),
+        )
+        if not new_paths and not build:
+            self._remove_staging()
+            return self._result(names)
+
+        header = self._scribe(self._staging_name(_STAGED_HEADER), is_header=True)
+        self._seed_header(header, header_state)
+        scribes, published = {}, {}
+        for channel, state in extend.items():
+            scribe = self._scribe(
+                self._staging_name(channel),
+                resume_info=self._resume_info(
+                    channel,
+                    base=state.manifest["id"],
+                    first_page=state.next_page_number,
+                ),
+            )
+            scribe.extend(state, tome_schemas(self._tome_root, state))
+            scribes[channel] = scribe
+            # The matches of the header are not added again, nor those a build
+            # that stopped before it finished the header added to the tome.
+            published[channel] = known.union(state.keys)
+        for channel in build:
+            scribes[channel] = self._scribe(
+                self._staging_name(channel), resume_info=self._resume_info(channel)
+            )
+        staged = self._resume_scribes(scribes) if self._resume else {}
+        # The tomes to build from scratch visit every match; the others the new ones.
+        walk = (list(old_keys) if build else []) + new_paths
+        self._walk(
+            walk, header, scribes, staged=staged, published=published, known=known
+        )
+
+        added = len(self._header_keys) - len(old_keys)
+        changed = {c: s for c, s in scribes.items() if c in extend and s.key_count > 0}
+        built = {c: scribes[c] for c in build if scribes[c].key_count > 0}
+        if added > 0:
+            header.finish()
+        for scribe in [*changed.values(), *built.values()]:
+            # All of the checks that can fail come before the first change.
+            scribe.finish()
+        for channel, scribe in changed.items():
+            self._commit_extension(
+                channel, scribe, names[channel], extend[channel], header
+            )
+        if added > 0:
+            self._commit_header(header, header_state)
+        for channel in build:
+            self._publish(channel, scribes[channel], names[channel])
+            if channel in built:
+                self._tidy_published(names[channel])
+        self._remove_staging()
+        self._log.info(
+            "Extend Basic Tomes Done",
+            matches_added=added,
+            tomes_extended=len(changed),
+            tomes_built=len(built),
+            pages_rewritten=sum(len(s.rewrites) for s in changed.values()),
+        )
+        return self._result(names)
+
+    def _result(self, names) -> BasicTomes:
+        tomes = {}
+        for channel, name in names.items():
+            loader = self._loader(name)
+            if loader.exists:
+                tomes[channel] = loader
+        header = self._loader(self._header_name)
+        return BasicTomes(
+            header=header, tomes=tomes, dates=header_dates(header.get_dataframe())
+        )
+
+    def _published_state(self, name, loader):
+        """The ledger of a finished tome that is extended, which must be whole."""
+        state = read_tome_state(self._tome_root, loader.manifest)
+        if state.dropped:
+            raise Exception(
+                f"Tome {name} lists {state.dropped} page(s) whose files are missing "
+                f"or unreadable, so it can't be extended. Build it again with "
+                f"behavior_if_complete='overwrite'."
+            )
+        return state
+
+    def _plan_channels(self, names):
+        """
+        Which channel tomes to extend (a finished one, by its ledger) and which
+        to build over every match (none yet, or a partial one built again).
+        """
+        extend, build = {}, []
+        for channel, name in names.items():
+            warn_if_invalid_tome_name(name)
+            loader = self._loader(name)
+            if not loader.exists:
+                build.append(channel)
+            elif loader.is_complete:
+                state = self._published_state(name, loader)
+                self._tidy(name, state.manifest)
+                extend[channel] = state
+            elif self._if_partial == "fail":
+                raise Exception(f"Tome already exists {name}")
+            elif self._if_partial == "overwrite":
+                build.append(channel)
+        return extend, build
+
+    def _seed_header(self, header, state):
+        """
+        Start the staged header with the rows of the finished one, so that
+        the page written is one page of all the matches, joined as a build
+        over all of them joins them.
+
+        A page's rows count only for the keys its keyset lists: a build that
+        stopped while it replaced the header (its rows first, then its keyset)
+        leaves rows of matches that the keyset doesn't have yet, and they are
+        read again from the matches.
+        """
+        header.extend(state, tome_schemas(self._tome_root, state), rewrite=False)
+        for page, keys in zip(state.pages, state.page_keys):
+            table = pq.read_table(get_page_path_fs(self._tome_root, "dataframe", page))
+            if HEADER_KEY_COLUMN in table.column_names:
+                # pyarrow.compute builds its functions on import: pylint can't see them.
+                # pylint: disable=no-member
+                listed = pc.is_in(
+                    table[HEADER_KEY_COLUMN], value_set=pa.array(keys, pa.string())
+                )
+                if not pc.all(listed).as_py():
+                    table = table.filter(listed)
+            header.seed(keys, prepare_table(table, []))
+
+    def _tome_dir(self, name) -> str:
+        return os.path.join(self._tome_root, "tome", self._ds_type, name)
+
+    def _read_manifest(self, key):
+        """A manifest by its key, or None when it is missing or unreadable."""
+        try:
+            with open(
+                os.path.join(self._tome_root, *key.split("/")), encoding="utf-8"
+            ) as file:
+                return json.load(file)
+        except (OSError, ValueError):
+            return None
+
+    def _tidy(self, name, manifest):
+        """Remove the page files that a build that stopped left beside a tome and its header copy."""
+        removed = remove_orphans(self._tome_dir(name), manifest)
+        copy = self._read_manifest(
+            make_key(["tome", self._ds_type, name, "header", "tome"])
+        )
+        if copy is not None:
+            removed += remove_orphans(
+                os.path.join(self._tome_dir(name), "header"), copy
+            )
+        if removed:
+            self._log.warning("Orphan page files removed", tome=name, files=removed)
+
+    def _tidy_published(self, name):
+        manifest = self._read_manifest(make_key(["tome", self._ds_type, name, "tome"]))
+        if manifest is not None:
+            self._tidy(name, manifest)
+
+    def _commit_extension(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self, channel, scribe, name, state, header
+    ):
+        """
+        Add a channel's new pages to its finished tome. The new page files
+        come first and are not listed until the last step, which replaces the
+        manifest in one atomic step, so a build that stops before it leaves
+        the tome as it was, with files beside it that the next build removes.
+        A page that the narrowing changed is replaced by a whole file, never
+        half of one.
+        """
+        self._log.info(
+            "Extending tome",
+            channel=channel,
+            matches=scribe.key_count,
+            pages=len(scribe.manifest["pages"]),
+            pages_rewritten=len(scribe.rewrites),
+        )
+        pages = [self._move_page(page, name) for page in scribe.manifest["pages"]]
+        for page, staged_path in scribe.rewrites:
+            replace_file(
+                staged_path, get_page_path_fs(self._tome_root, "dataframe", page)
+            )
+        self._write_header_copy(name, [*state.keys, *scribe.keys], header)
+        manifest = TomeManifest(
+            tome_name=name,
+            ds_type=self._ds_type,
+            header_tome_name=self._header_name,
+            log=self._log,
+        )
+        data = dict(state.manifest, pages=[*state.pages, *pages])
+        data[SIGNATURES_FIELD] = scribe.manifest[SIGNATURES_FIELD]
+        data["extendedAt"] = now_to_iso()
+        manifest.set(data)
+        manifest.finish()
+        self._writer.write_manifest(manifest.get())
+        remove_orphans(self._tome_dir(name), manifest.get())
+
+    def _write_header_copy(self, name, keys, header):
+        """
+        The header copy of a tome that is extended, for all its ``keys``: one
+        new page, taken from the staged header, and a manifest that replaces
+        the old one (and keeps its id) in one atomic step.
+        """
+        if self._header_frame is None:
+            # Read once for all the tomes: the staged header is the same for each.
+            self._header_frame = read_pages_pandas(
+                [
+                    get_page_path_fs(self._tome_root, "dataframe", page)
+                    for page in header.manifest["pages"]
+                ]
+            )
+        frame = self._header_frame
+        keys = frozenset(keys)
+        frame = frame.loc[frame["key"].isin(keys) & ~frame["key"].duplicated()]
+        frame = frame.reset_index(drop=True)
+        copy_key = make_key(["tome", self._ds_type, name, "header", "tome"])
+        old = self._read_manifest(copy_key)
+        manifest = TomeManifest(
+            tome_name=name,
+            ds_type=self._ds_type,
+            header_tome_name=self._header_name,
+            is_header=True,
+            src_id=self._header_id,
+            is_copied_header=True,
+            log=self._log,
+        )
+        manifest.start_page()
+        page = manifest.end_page(next_page_number(old["pages"]) if old else 0)
+        self._writer.write_page(page, frame, list(frame["key"]))
+        manifest.finish()
+        data = manifest.get()
+        if old is not None:
+            data.update(id=old["id"], createdAt=old["createdAt"])
+        self._writer.write_manifest(data)
+        remove_orphans(os.path.join(self._tome_dir(name), "header"), data)
+
+    def _commit_header(self, header, state):
+        """
+        Replace the header's page by the staged one, which holds the new rows too.
+
+        A header of one page, number 0, as this builder writes it, stays so:
+        the files of page 0 (its rows, then its keyset, which is the list of
+        matches) are replaced one by one, each whole, as tools that read
+        ``header/keyset_00000`` expect. Any other header gets a new page and
+        a manifest that lists only that one, in one atomic step.
+        """
+        staged = header.manifest
+        if len(state.pages) == 1 and state.pages[0]["number"] == 0:
+            pages = list(state.pages)
+            for subtype in ("dataframe", "keyset"):
+                replace_file(
+                    get_page_path_fs(self._tome_root, subtype, staged["pages"][0]),
+                    get_page_path_fs(self._tome_root, subtype, pages[0]),
+                )
+        else:
+            pages = [
+                self._move_page(page, self._header_name) for page in staged["pages"]
+            ]
+        manifest = TomeManifest(
+            tome_name=self._header_name, ds_type=self._ds_type, is_header=True
+        )
+        data = dict(state.manifest, pages=pages)
+        data[SIGNATURES_FIELD] = staged[SIGNATURES_FIELD]
+        data["extendedAt"] = now_to_iso()
+        manifest.set(data)
+        manifest.finish()
+        self._writer.write_manifest(manifest.get())
+        remove_orphans(self._tome_dir(self._header_name), manifest.get())
 
     def _loader(self, name) -> TomeLoader:
         reader = TomeReaderFs(
@@ -457,6 +917,7 @@ class _ArrowScribe:
         proxies,
         key_column,
         tome_root,
+        resume_info=None,
         log,
     ):
         self._manifest = manifest
@@ -476,6 +937,16 @@ class _ArrowScribe:
         self.keys = []
         self.pandas_pages = 0
         self.narrowed_pages = 0
+        # What the staged tome is built for (see `_Build._resume_info`).
+        self.resume_info = resume_info
+        if resume_info is not None:
+            self._manifest.get()[RESUME_FIELD] = resume_info
+        # A finished tome that this one extends: its pages, which stay, and the
+        # copies at other types that the narrowing makes of them, as (page,
+        # staged file) pairs.
+        self._base_pages = []
+        self.rewrites = []
+        self._finished = False
 
     @property
     def key_count(self) -> int:
@@ -498,14 +969,68 @@ class _ArrowScribe:
         if self._max_bytes is not None and self._page.nbytes > self._max_bytes:
             self._write()
 
+    def seed(self, keys, prepared):
+        """
+        Start the page with rows written before: the keys of the matches they
+        came from, and the rows as (table, signature) or None.
+        """
+        self.keys.extend(keys)
+        if prepared is not None:
+            self._signatures.add(prepared[1])
+        self._page.add_all(keys, prepared)
+
+    def resume(self, state):
+        """
+        Continue a staged tome: its pages stay, the numbers go on after them
+        and the keys and signatures they carry count as added. ``state`` is
+        its `TomeState`, whose pages are the ones whose files are all there.
+        """
+        manifest = {
+            name: value
+            for name, value in state.manifest.items()
+            if name not in ("completedAt", "timings")
+        }
+        manifest.update(pages=list(state.pages), isComplete=False)
+        self._manifest.set(manifest)
+        self._page_counter = max(self._page_counter, next_page_number(state.pages))
+        self._page_keys = list(state.page_keys)
+        self.keys = state.keys
+        self._signatures.update(
+            (schema, None, ())
+            for schema in decode_schemas(manifest.get(SIGNATURES_FIELD, []))
+        )
+
+    def extend(self, state, schemas, *, rewrite=True):
+        """
+        Add pages to a finished tome (``state`` is its `TomeState`, ``schemas``
+        what it was built from): new pages are numbered after its last, and,
+        unless ``rewrite`` is False, its own pages are written again at the
+        tome's types, if the narrowing changed them, when this tome finishes.
+        Its pages and keys are not part of this tome's manifest.
+        """
+        self._signatures.update((schema, None, ()) for schema in schemas)
+        self._page_counter = state.next_page_number
+        if rewrite:
+            self._base_pages = list(state.pages)
+
     def finish(self):
+        if self._finished:
+            return
         if len(self.keys) == 0:
             raise Exception("Empty Tome not supported")
         if len(self._page.keys) > 0:
             self._write()
-        self._narrow_written_pages()
+        plan = plan_narrowing(signature[0] for signature in self._signatures)
+        self._narrow_written_pages(plan)
+        self._narrow_base_pages(plan)
         self._manifest.finish()
+        self._manifest.get()[SIGNATURES_FIELD] = self._signature_texts()
         self._writer.write_manifest(self._manifest.get())
+        self._finished = True
+
+    def _signature_texts(self) -> list:
+        """The schemas of the tome's matches, as the manifest keeps them."""
+        return encode_schemas(signature[0] for signature in self._signatures)
 
     def _write(self):
         data = self._page.table()
@@ -520,13 +1045,16 @@ class _ArrowScribe:
                 )
         page = self._manifest.end_page(self._page_counter)
         self._writer.write_page(page, data, self._page.keys)
+        # The signatures of all the matches added so far are the ones of the
+        # pages written: the page that was just written is the last they came in.
+        self._manifest.get()[SIGNATURES_FIELD] = self._signature_texts()
         self._writer.write_manifest(self._manifest.get())
         self._page_keys.append(self._page.keys)
         self._page_counter += 1
         self._page = _Page(self._proxies, self._key_column)
         self._manifest.start_page()
 
-    def _narrow_written_pages(self):
+    def _narrow_written_pages(self, plan):
         """
         Write again, at the tome's types, the pages that hold a column the
         tome narrows at another type: wide, because the page was written
@@ -534,23 +1062,10 @@ class _ArrowScribe:
         narrow type can't, or narrower, because a later match brought a wider
         narrow type. A value that doesn't fit the tome's type raises here.
         """
-        plan = plan_narrowing(signature[0] for signature in self._signatures)
-        if not plan:
-            return
         for page, keys in zip(self._manifest.get()["pages"], self._page_keys):
-            path = get_page_path_fs(self._tome_root, "dataframe", page)
-            schema = pq.read_schema(path)
-            differ = {
-                name: target
-                for name, target in plan.items()
-                if name in schema.names
-                and schema.field(name).type != target
-                and not pa.types.is_null(schema.field(name).type)
-            }
-            if not differ:
+            table, differ = self._narrowed(page, plan)
+            if table is None:
                 continue
-            table = pq.read_table(path)
-            table = narrow_table(table, differ, describe_rows(table, self._key_column))
             self._writer.write_page(page, table, keys)
             self.narrowed_pages += 1
             self._log.info(
@@ -559,6 +1074,55 @@ class _ArrowScribe:
                 page_number=page["number"],
                 columns=sorted(differ),
             )
+
+    def _narrow_base_pages(self, plan):
+        """
+        The pages of the finished tome that this one extends, at the types the
+        narrowing now gives: written aside, in the staging folder, as whole
+        files that replace the old pages when the tome is changed. A value
+        that doesn't fit the tome's type raises here, before anything changes.
+        """
+        folder = os.path.join(
+            self._tome_root, *self._manifest.get()["key"].split("/")[:-1]
+        )
+        for page in self._base_pages:
+            table, differ = self._narrowed(page, plan)
+            if table is None:
+                continue
+            staged = os.path.join(folder, "rewrite_" + page["dataframe"]["dataframe"])
+            self._writer.write_parquet(staged, table)
+            self.rewrites.append((page, staged))
+            self.narrowed_pages += 1
+            self._log.info(
+                "Page narrowed",
+                tome=self._manifest.get()["tome"],
+                page_number=page["number"],
+                columns=sorted(differ),
+            )
+
+    def _narrowed(self, page, plan):
+        """
+        The page's table narrowed by the plan and the columns that changed,
+        or (None, None) when the page already holds the plan's types.
+        """
+        if not plan:
+            return None, None
+        path = get_page_path_fs(self._tome_root, "dataframe", page)
+        schema = pq.read_schema(path)
+        differ = {
+            name: target
+            for name, target in plan.items()
+            if name in schema.names
+            and schema.field(name).type != target
+            and not pa.types.is_null(schema.field(name).type)
+        }
+        if not differ:
+            return None, None
+        table = pq.read_table(path)
+        return (
+            narrow_table(table, differ, describe_rows(table, self._key_column)),
+            differ,
+        )
 
 
 class _Page:
@@ -585,7 +1149,11 @@ class _Page:
         return self._block_bytes + self._tail_bytes
 
     def add(self, key, prepared):
-        self.keys.append(key)
+        self.add_all([key], prepared)
+
+    def add_all(self, keys, prepared):
+        """Add the rows of one or more matches, as one table, with their keys."""
+        self.keys.extend(keys)
         if prepared is None:
             return
         table, table_signature = prepared
@@ -621,6 +1189,58 @@ class _Page:
         self._blocks.append(block)
         self._block_bytes += block.nbytes
         self._tail, self._tail_bytes, self._tail_signatures = [], 0, set()
+
+
+class _Follow:
+    """
+    Checks, while a resumed build walks, that the matches come as they did
+    when its staged pages were built.
+
+    A staged tome holds the first matches of the walk that have its channel.
+    If a match came in since (it sorts before a staged one) or the order of
+    ``keys`` changed, the tome lists the staged matches first and the others
+    after them, which is not the order of the header: that is logged. If a
+    staged match is not found any more, the pages would hold a match that the
+    header lacks, and resuming is refused.
+    """
+
+    def __init__(self, staged, published, log):
+        self._staged = {channel: keys for channel, keys in staged.items() if keys}
+        self._published = published
+        self._log = log
+        self._lacking = dict.fromkeys(self._staged, None)
+        self._reached = {channel: set() for channel in self._staged}
+        self._reordered = set()
+
+    def step(self, key, present):
+        for channel in present:
+            keys = self._staged.get(channel)
+            if keys is None:
+                continue
+            if key in keys:
+                if self._lacking[channel] is not None:
+                    self._reordered.add(channel)
+                self._reached[channel].add(key)
+            elif key not in self._published.get(channel, ()):
+                if self._lacking[channel] is None:
+                    self._lacking[channel] = key
+
+    def check(self, staging_path):
+        for channel, keys in self._staged.items():
+            lost = keys - self._reached[channel]
+            if lost:
+                raise ValueError(
+                    f"Can't resume: the staged pages of channel {channel} hold "
+                    f"{len(lost)} match(es) that were not found this time, such as "
+                    f"{sorted(lost)[0]!r}. Remove {staging_path} or build again "
+                    f"without resume."
+                )
+        if self._reordered:
+            self._log.warning(
+                "Resumed tomes list the matches they staged first, then the "
+                "others: not in the order of the header",
+                channels=sorted(self._reordered),
+            )
 
 
 class _Progress:
