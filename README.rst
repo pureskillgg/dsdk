@@ -6,7 +6,7 @@ PureSkill.gg Data Science Development Kit
 .. |PyPI| image:: https://img.shields.io/pypi/v/pureskillgg-dsdk.svg
    :target: https://pypi.python.org/pypi/pureskillgg-dsdk
    :alt: PyPI
-.. |GitHub Actions| image:: https://github.com/pureskillgg/dsdk/workflows/main/badge.svg
+.. |GitHub Actions| image:: https://github.com/pureskillgg/dsdk/actions/workflows/main.yml/badge.svg
    :target: https://github.com/pureskillgg/dsdk/actions
    :alt: GitHub Actions
 
