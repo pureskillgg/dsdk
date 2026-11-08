@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 4.1.2
+
+### Changed
+
+- Rename the workflows as they show on the Actions tab (CI, Format, Cut version, Publish) with readable run titles; CI runs on pushes and pull requests to master and `ver/**`, so a fork's PR gets CI; one version cut at a time, with a required version input; the version tag is pushed only together with its branch (`git push --atomic`); format skips fork and Dependabot PRs.
+
+## 4.1.0
 
 ### Added
 
@@ -15,10 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `download_adx_dataset_revision` extracts match zips after downloading, so a download lands in the loose layout whichever way the revision holds its matches. Pass `extract=False` to keep only the zips.
 
-### Fixed
-
-- Skip revoked AWS Data Exchange revisions when listing revisions, picking the latest one, and exporting a date range. A revoked revision has no assets, so exporting it failed, and exporting every revision stopped at the first revoked one.
-
 ## 4.0.2
 
 ### Changed
@@ -27,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Allow pyarrow 26 and polars 2.
 - Build with uv_build 0.13 and run CI on uv 0.13.0.
 - Refresh the lock to the newest allowed versions.
+
+### Fixed
+
+- Skip revoked AWS Data Exchange revisions when listing revisions, picking the latest one, and exporting a date range. A revoked revision has no assets, so exporting it failed, and exporting every revision stopped at the first revoked one.
 
 ## 4.0.0
 
