@@ -1,5 +1,6 @@
 import io
 import os
+import time
 
 from pathlib import Path
 import structlog
@@ -71,6 +72,13 @@ class TomeWriterFs:
         self._write_dataframe(page, dataframe)
         self._write_keyset(page, keyset)
 
+    def write_parquet(self, path, data):
+        """
+        Write a pandas ``DataFrame`` or a ``pyarrow.Table`` to ``path`` in the
+        tome's codec, all or nothing (see `write_atomically`).
+        """
+        self._write_parquet(path, data)
+
     def _write_dataframe(self, page, dataframe):
         key = self._get_page_key("dataframe", page)
 
@@ -100,13 +108,65 @@ class TomeWriterFs:
     def _write_parquet(self, key: str, df: pd.DataFrame | pa.Table) -> None:
         self._log.debug("Write parquet", key=key)
         if isinstance(df, pa.Table):
-            pq.write_table(df, key, compression=self._parquet_compression)
-            return
-        df.to_parquet(key, compression=self._parquet_compression)
+
+            def write(file):
+                pq.write_table(df, file, compression=self._parquet_compression)
+
+        else:
+
+            def write(file):
+                df.to_parquet(file, compression=self._parquet_compression)
+
+        write_atomically(key, write)
 
     def _write_json(self, key, data):
-        with open(key, "w", encoding="utf-8") as file:
-            rapidjson.dump(data, file)
+        write_atomically(
+            key, lambda file: rapidjson.dump(data, file), mode="w", encoding="utf-8"
+        )
+
+
+# Windows refuses to replace a file another process holds open for a moment (a
+# reader, a virus scanner), so a replace is tried again a few times.
+_REPLACE_ATTEMPTS = 6
+_REPLACE_FIRST_WAIT_SECONDS = 0.05
+
+
+def replace_file(source, destination) -> None:
+    """``os.replace``, tried again briefly when Windows says the file is in use."""
+    wait = _REPLACE_FIRST_WAIT_SECONDS
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(wait)
+            wait *= 2
+
+
+def write_atomically(path, write, *, mode="wb", encoding=None) -> None:
+    """
+    Write ``path`` all or nothing: ``write(file)`` fills a temporary file
+    beside it, which is flushed to disk and then renamed over ``path``.
+
+    A reader, or a build that starts after a crash, finds the old file or the
+    complete new one, never half of either. A crash in the middle can leave
+    the temporary file (``<path>.<pid>.tmp``), which nothing reads.
+    """
+    temp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(temp, mode, encoding=encoding) as file:
+            write(file)
+            file.flush()
+            os.fsync(file.fileno())
+        replace_file(temp, path)
+    except BaseException:
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+        raise
 
 
 def check_compression(compression, /) -> None:
